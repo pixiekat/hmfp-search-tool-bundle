@@ -1,0 +1,28 @@
+{
+    "name": "pixiekat/hmfp-search-tool-bundle",
+    "description": "A symfony bundle that provides the basic application functionality for the HMFP search tool.",
+    "type": "symfony-bundle",
+    "license": "proprietary",
+    "keywords": ["lumina", "symfony-bundle", "clinical-trials", "evaluation"],
+    "require": {
+        "php": ">=8.4",
+        "symfony/framework-bundle": "^8.1",
+        "defuse/php-encryption": "^2.1",
+        "doctrine/orm": "^3.6",
+        "doctrine/dbal": "^4.4",
+        "doctrine/doctrine-bundle": "^3.2",
+        "doctrine/doctrine-migrations-bundle": "^4.0",
+        "nowo-tech/doctrine-encrypt-bundle": "^2.3",
+        "pixiekat/symfony-common-helpers": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Pixiekat\\HMFPSearchToolBundle\\": "src/"
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "0.1-dev"
+        }
+    }
+}
