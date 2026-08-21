@@ -1,0 +1,3 @@
+pixiekats_hmfp_search_tool_bundle.routes:
+    resource: '../src/Controller/'
+    type: attribute

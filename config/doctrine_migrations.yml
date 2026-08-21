@@ -1,0 +1,3 @@
+doctrine_migrations:
+  migrations_paths:
+    'Pixiekat\\HMFPSearchToolBundle': '%kernel.project_dir%/vendor/pixiekat/hmfp-search-tool-bundle/migrations'
