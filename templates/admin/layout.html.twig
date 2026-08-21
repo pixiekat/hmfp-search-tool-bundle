@@ -1,0 +1,27 @@
+{#
+  HMFP Search Tool's admin layout.
+#}
+{% extends '@PixiekatSymfonyHelpers/admin/cp_layout.html.twig' %}
+
+{% set admin_nav_sections = helpers_admin_nav()|merge([
+  {
+    label: 'Users & Access',
+    links: [
+      {route: 'hmfp_search_tool_admin_users_list', label: 'Users', also: ['hmfp_search_tool_admin_user_edit']},
+      {route: 'hmfp_search_tool_admin_user_add', label: 'Add User'},
+    ],
+  },
+  {
+    label: 'HMFP Search Tool',
+    links: [],
+  },
+]) %}
+
+{% block admin_brand %}HMFP Search Tool{% endblock %}
+
+{% block admin_header_links %}
+  {% if app.user %}
+    <span>Logged in as <strong>{{ app.user.displayName }}</strong></span>
+  {% endif %}
+  <a href="{{ path('pixiekat_symfony_helpers_logout') }}">Log out</a>
+{% endblock %}

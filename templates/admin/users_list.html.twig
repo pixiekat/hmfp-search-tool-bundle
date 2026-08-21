@@ -1,0 +1,54 @@
+{% extends '@HMFPSearchTool/admin/layout.html.twig' %}
+{% block admin_page_title %}Users{% endblock %}
+
+{% block content %}
+  <div class="actions">
+    <a href="{{ path('hmfp_search_tool_admin_user_add') }}" class="button">Add User</a>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <caption>{{ users|length }} user{{ users|length == 1 ? '' : 's' }} with access to HMFP Search Tool.</caption>
+      <thead>
+        <tr>
+          <th scope="col">Email</th>
+          <th scope="col">Active</th>
+          <th scope="col">Roles</th>
+          <th scope="col"><span class="visually-hidden">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users|default([]) %}
+          <tr>
+            <th scope="row">{{ user.emailAddress }}</th>
+            <td>
+              {# The word carries it, not the colour. #}
+              {% if user.active %}
+                <span class="badge badge--agree">Yes</span>
+              {% else %}
+                <span class="badge badge--disagree">No</span>
+              {% endif %}
+            </td>
+            <td>{{ user.roles|join(', ') }}</td>
+            <td>
+              {# Accessible names say WHICH user — a column of identical "Edit"
+                 and "Delete" controls is unusable in a screen reader's list. #}
+              <a href="{{ path('hmfp_search_tool_admin_user_edit', {'id': user.id}) }}" class="button button--secondary">
+                Edit<span class="visually-hidden"> {{ user.emailAddress }}</span>
+              </a>
+              <form method="post" action="{{ path('hmfp_search_tool_admin_user_delete', {'id': user.id}) }}" class="inline"
+                    onsubmit="return confirm('Delete {{ user.emailAddress }}? This cannot be undone.');">
+                <input type="hidden" name="_token" value="{{ csrf_token('delete-user-' ~ user.id) }}">
+                <button type="submit" class="button--danger">
+                  Delete<span class="visually-hidden"> {{ user.emailAddress }}</span>
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4">No users found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}
