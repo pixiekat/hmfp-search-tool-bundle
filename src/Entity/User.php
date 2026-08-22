@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace Pixiekat\HMFPSearchToolBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use Pixiekat\HMFPSearchToolBundle\Interfaces as HMFPSearchToolInterfaces;
 use Pixiekat\SymfonyHelpers\Traits\Entity as PixieTraits;
 use Pixiekat\SymfonyHelpers\Interfaces\Entity\HelpersUserInterface;
 use Scheb\TwoFactorBundle\Model\Email\TwoFactorInterface;
@@ -55,5 +56,29 @@ class User implements HelpersUserInterface, UserInterface, PasswordAuthenticated
   public function setEmailAddress(string $emailAddress): self {
     $this->emailAddress = $emailAddress;
     return $this;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function getAllRoles(bool $includeUser = true, bool $invert = false): array {
+    $roles = [
+      HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_SYSADMIN => HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_SYSADMIN_LABEL,
+      HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_ADMIN => HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_ADMIN_LABEL,
+      HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_CONTENT_ADMIN => HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_CONTENT_ADMIN_LABEL,
+      HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_DATA_STEWARD => HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_DATA_STEWARD_LABEL,
+      HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_DEPARTMENT_EDITOR => HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_DEPARTMENT_EDITOR_LABEL,
+      HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_ANALYTICS_VIEWER => HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_ANALYTICS_VIEWER_LABEL,
+    ];
+
+    if ($includeUser) {
+      $roles[HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_USER] = HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_USER_LABEL;
+    }
+
+    if ($invert) {
+      $roles = array_flip($roles);
+    }
+
+    return $roles;
   }
 }
