@@ -1,0 +1,15 @@
+{% extends '@HMFPSearchTool/admin/layout.html.twig' %}
+{% block admin_page_title %}Add Physician{% endblock %}
+
+{% block content %}
+  <div class="actions">
+    <a href="{{ path('hmfp_search_tool_admin_physicians_list') }}" class="button button--secondary">&larr; Back to Physicians</a>
+  </div>
+
+  <div data-turbo="false">
+    {{ form_start(form) }}
+      {{ form_widget(form) }}
+      <button type="submit">Add Physician</button>
+    {{ form_end(form) }}
+  </div>
+{% endblock %}

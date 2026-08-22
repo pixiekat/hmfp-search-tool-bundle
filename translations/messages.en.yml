@@ -1,0 +1,23 @@
+# Audit log
+#
+# audit.action.* supplies the vB3-style sentence for each action key. The
+# placeholders available are %actor%, %action% and %target%.
+#
+# `default` is the fallback used for any action with no phrasing of its own, so
+# a newly logged action reads sensibly the moment it first appears — writing a
+# nicer phrasing is an improvement, never a prerequisite.
+#
+# Add an entry by naming it after the action key you passed to
+# AuditLogManager::log(), e.g. log('block.created', $block) -> audit.action.block.created
+audit:
+    action:
+        department.created: '%actor% created the department %target%'
+        department.updated: '%actor% updated the department %target%'
+        department.deleted: '%actor% deleted the department %target%'
+        physician.created: '%actor% created the physician %target%'
+        physician.updated: '%actor% updated the physician %target%'
+        physician.deleted: '%actor% deleted the physician %target%'
+        physicians.imported: '%actor% imported physicians from a CSV file'
+        facility.created: '%actor% created the facility %target%'
+        facility.updated: '%actor% updated the facility %target%'
+        facility.deleted: '%actor% deleted the facility %target%'

@@ -1,0 +1,62 @@
+{% extends '@HMFPSearchTool/admin/layout.html.twig' %}
+{% block admin_page_title %}Physicians{% endblock %}
+
+{% block content %}
+  <div class="actions">
+    <a href="{{ path('hmfp_search_tool_admin_facilities_add') }}" class="button">Add Facility</a>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <caption>{{ total }} facilit{{ total == 1 ? 'y' : 'ies' }} · page {{ page }} of {{ pages }}</caption>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col"># of Physicians</th>
+          <th scope="col"><span class="visually-hidden">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for facility in facilities|default([]) %}
+          <tr>
+            <th scope="row">{{ facility.getName }}</th>
+            <th scope="row">{{ facility.getPhysicians|length }}</th>
+            <td>
+              {# Accessible names say WHICH department — a column of identical "Edit"
+                 and "Delete" controls is unusable in a screen reader's list. #}
+              <a href="{{ path('hmfp_search_tool_admin_facility_edit', {'id': facility.id}) }}" class="button button--secondary">
+                Edit<span class="visually-hidden"> {{ facility.getName }}</span>
+              </a>
+              <form method="post" action="{{ path('hmfp_search_tool_admin_facility_delete', {'id': facility.id}) }}" class="inline"
+                    onsubmit="return confirm('Delete {{ facility.getName }}? This cannot be undone.');">
+                <input type="hidden" name="_token" value="{{ csrf_token('delete-facility-' ~ facility.id) }}">
+                <button type="submit" class="button--danger">
+                  Delete<span class="visually-hidden"> {{ facility.getName }}</span>
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="2">No facilities found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pages > 1 %}
+    <nav class="pagination" aria-label="Facilities pages">
+      {% if page > 1 %}
+        <a href="{{ path('hmfp_search_tool_admin_facilities_list', {page: page - 1}) }}" rel="prev">← Previous</a>
+      {% else %}
+        <span class="muted" aria-hidden="true">← Previous</span>
+      {% endif %}
+      <span>Page {{ page }} of {{ pages }}</span>
+      {% if page < pages %}
+        <a href="{{ path('hmfp_search_tool_admin_facilities_list', {page: page + 1}) }}" rel="next">Next →</a>
+      {% else %}
+        <span class="muted" aria-hidden="true">Next →</span>
+      {% endif %}
+    </nav>
+  {% endif %}
+
+{% endblock %}

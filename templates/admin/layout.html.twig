@@ -13,7 +13,13 @@
   },
   {
     label: 'HMFP Search Tool',
-    links: [],
+    links: [
+      {route: 'hmfp_search_tool_admin_departments_list', label: 'Departments', also: ['hmfp_search_tool_admin_department_add']},
+      {route: 'hmfp_search_tool_admin_departments_add', label: 'Add Department'},
+      {route: 'hmfp_search_tool_admin_physicians_list', label: 'Physicians', also: ['hmfp_search_tool_admin_physician_add']},
+      {route: 'hmfp_search_tool_admin_physicians_add', label: 'Add Physician'},
+      {route: 'hmfp_search_tool_admin_facilities_list', label: 'Facilities', also: []},
+    ],
   },
 ]) %}
 

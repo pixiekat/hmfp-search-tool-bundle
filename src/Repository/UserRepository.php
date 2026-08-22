@@ -6,6 +6,7 @@ use Pixiekat\HMFPSearchToolBundle\Entity;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
+use Pixiekat\SymfonyHelpers\Traits\Repository\PaginationTrait;
 use Symfony\Component\Security\Core\Exception\UnsupportedUserException;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
@@ -21,6 +22,7 @@ use Symfony\Component\Security\Core\User\PasswordUpgraderInterface;
  * @method Entity\User[]    findBy(array $criteria, array $orderBy = null, $limit = null, $offset = null)
  */
 class UserRepository extends ServiceEntityRepository implements PasswordUpgraderInterface {
+  use PaginationTrait;
 
   public function __construct(
     ManagerRegistry $registry,
