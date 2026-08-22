@@ -45,10 +45,7 @@ class AdminCreateUserFormType extends AbstractType {
         ],
       ])
       ->add('roles', FormTypes\ChoiceType::class, [
-        'choices' => [
-          'System Administrator' => 'ROLE_SYSADMIN',
-          'Admin' => 'ROLE_ADMIN',
-        ],
+        'choices' => Entity\User::getAllRoles(false, true),
         'multiple' => true,
         'expanded' => true,
       ])

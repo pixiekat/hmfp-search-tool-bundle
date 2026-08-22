@@ -29,7 +29,7 @@ final class AdminController extends AbstractController {
   #[Route('/users', name: 'hmfp_search_tool_admin_users_list')]
   public function listUsers(): Response {
     $users = $this->entityManager->getRepository(Entity\User::class)->findAll();
-    return $this->render('@HMFPSearchTool/admin/users_list.html.twig', [
+    return $this->render('@HMFPSearchTool/admin/users/users_list.html.twig', [
       'users' => $users,
     ]);
   }
@@ -38,7 +38,7 @@ final class AdminController extends AbstractController {
   public function addUser(): Response {
 
     $user = new Entity\User();
-    $form = $this->createForm(Form\AdminCreateUserFormType::class, $user);
+    $form = $this->createForm(Form\AdminUserFormType::class, $user);
     $form->handleRequest($this->requestStack->getCurrentRequest());
 
     // process the form since we assume all passed validation in the form type.
@@ -70,7 +70,7 @@ final class AdminController extends AbstractController {
       return $this->redirectToRoute('hmfp_search_tool_admin_users_list');
     }
 
-    return $this->render('@HMFPSearchTool/admin/user_add.html.twig', [
+    return $this->render('@HMFPSearchTool/admin/users/user_add.html.twig', [
       'form' => $form->createView(),
     ]);
   }
@@ -82,7 +82,7 @@ final class AdminController extends AbstractController {
       throw $this->createNotFoundException('User not found');
     }
 
-    $form = $this->createForm(Form\AdminEditUserFormType::class, $user);
+    $form = $this->createForm(Form\AdminUserFormType::class, $user);
     $form->handleRequest($this->requestStack->getCurrentRequest());
 
     // process the form since we assume all passed validation in the form type.
@@ -117,7 +117,7 @@ final class AdminController extends AbstractController {
       return $this->redirectToRoute('hmfp_search_tool_admin_users_list');
     }
 
-    return $this->render('@HMFPSearchTool/admin/user_edit.html.twig', [
+    return $this->render('@HMFPSearchTool/admin/users/user_edit.html.twig', [
       'form' => $form->createView(),
       'user' => $user,
     ]);

@@ -12,7 +12,7 @@ use Symfony\Component\Form\FormEvents;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 use Symfony\Component\Validator\Constraints as Assert;
 
-class AdminEditUserFormType extends AbstractType {
+class AdminUserFormType extends AbstractType {
   public function buildForm(FormBuilderInterface $builder, array $options): void {
     $builder
       ->add('emailAddress', FormTypes\EmailType::class, [
@@ -42,10 +42,7 @@ class AdminEditUserFormType extends AbstractType {
         'required' => false,
       ])
       ->add('roles', FormTypes\ChoiceType::class, [
-        'choices' => [
-          'System Administrator' => 'ROLE_SYSADMIN',
-          'Admin' => 'ROLE_ADMIN',
-        ],
+        'choices' => Entity\User::getAllRoles(false, true),
         'multiple' => true,
         'expanded' => true,
       ])
