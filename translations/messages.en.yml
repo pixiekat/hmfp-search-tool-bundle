@@ -21,3 +21,4 @@ audit:
         facility.created: '%actor% created the facility %target%'
         facility.updated: '%actor% updated the facility %target%'
         facility.deleted: '%actor% deleted the facility %target%'
+        search.accessed: '%actor% accessed the search tool'
