@@ -145,6 +145,7 @@ final class SearchController extends AbstractController {
       'filters'      => $taxonomyFilters,
       'departmentId' => $taxonomyFilters['department'] ?? null,
       'facilityId'   => $taxonomyFilters['facility'] ?? null,
+      'specialtyId'  => $taxonomyFilters['specialty'] ?? null,
       'credential'   => $credential,
       'hasCriteria'  => $hasCriteria,
       'activeFilterCount' => count($activeFilters) + ($credential !== null ? 1 : 0),
