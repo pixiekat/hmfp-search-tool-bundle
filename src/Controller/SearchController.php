@@ -158,6 +158,8 @@ final class SearchController extends AbstractController {
       'specialtyId'       => $taxonomyFilters['specialty'] ?? null,
       'languageOptions'   => $this->taxonomy->termsByName(PhysicianVocabulary::Language),
       'languageId'        => $taxonomyFilters['language'] ?? null,
+      'clinicalInterestOptions' => $this->taxonomy->termsByName(PhysicianVocabulary::ClinicalInterest),
+      'clinicalInterestId'      => $taxonomyFilters['clinical_interest'] ?? null,
     ]);
   }
 

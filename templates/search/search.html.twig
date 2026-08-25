@@ -124,6 +124,25 @@
         </select>
       </div>
 
+      {#
+        Rendered only when clinical interests actually exist. An empty required
+        filter reads as broken; until physicians start editing, the control has
+        nothing to offer and is better absent than empty.
+      #}
+      {% if clinicalInterestOptions is not empty %}
+        <div class="filter">
+          <label for="clinical_interest">Clinical interest</label>
+          <select id="clinical_interest" name="clinical_interest">
+            <option value="">Any clinical interest</option>
+            {% for option in clinicalInterestOptions|sort((a, b) => a.name|lower <=> b.name|lower) %}
+              <option value="{{ option.id }}" {{ option.id == clinicalInterestId ? 'selected' : '' }}>
+                {{ option.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+
       <div class="filter">
         <label for="facility">Facility</label>
         <select id="facility" name="facility">
@@ -168,7 +187,7 @@
     {% if not hasCriteria %}
       <h2 id="results-heading">Start a search</h2>
       <p class="muted">
-        Enter a name above, or narrow by department, facility or credential to browse.
+        You can search by name, and narrow results by department, specialty, language, clinical interest, facility, or credential. Matches will be ranked by relevance, with the best match first.
       </p>
 
     {% elseif total == 0 %}
@@ -222,7 +241,16 @@
               searching "smyth" who gets "Smith" should be told why, otherwise
               the result looks like a bug.
             #}
-            {% if score <= 30 and term is not empty %}
+            {#
+              Phonetic hits are flagged rather than silently mixed in. Someone
+              searching "smyth" who gets "Smith" should be told why, otherwise
+              the result looks like a bug.
+
+              Compared against the named constant rather than a literal, so the
+              note cannot drift out of step with the scoring — the tiers were
+              renumbered once already when free-text search widened beyond names.
+            #}
+            {% if term is not empty and score == constant('Pixiekat\\HMFPSearchToolBundle\\Repository\\PhysicianRepository::SCORE_PHONETIC') %}
               <p class="match-note">Similar spelling to “{{ term }}”</p>
             {% endif %}
 
@@ -240,6 +268,17 @@
                 <span class="label">{{ physician.facilities|length == 1 ? 'Facility' : 'Facilities' }}:</span>
                 {% for facility in physician.facilities %}
                   <a href="{{ path('hmfp_search_tool_search', app.request.query.all|merge({facility: facility.id, page: 1})) }}">{{ facility.name }}</a>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              </p>
+            {% endif %}
+
+            {% set clinical_interests = physician.terms|filter(t => t.vocabulary and t.vocabulary.name == 'clinical_interest') %}
+
+            {% if clinical_interests is not empty %}
+              <p class="result-meta">
+                <span class="label">Clinical Interests:</span>
+                {% for term in clinical_interests|sort((a, b) => a.name|lower <=> b.name|lower) %}
+                  <a href="{{ path('hmfp_search_tool_search', app.request.query.all|merge({clinical_interest: term.id, page: 1})) }}">{{ term.name }}</a>{% if not loop.last %}, {% endif %}
                 {% endfor %}
               </p>
             {% endif %}
@@ -298,6 +337,13 @@
                   {%- set link = path('hmfp_search_tool_search', app.request.query.all|merge({language: term.id, page: 1})) -%}
                   <a href="{{ link }}">{{ term.name }}</a>{% if not loop.last %}, {% endif %}
                 {% endfor %}
+              </p>
+            {% endif %}
+
+            {# scores per patient #}
+            {% if scores is defined and scores[physician.id] is defined and scores[physician.id] != 0%}
+              <p class="result-meta">
+                <span class="label">Relevance:</span> {{ scores[physician.id] }}
               </p>
             {% endif %}
           </li>

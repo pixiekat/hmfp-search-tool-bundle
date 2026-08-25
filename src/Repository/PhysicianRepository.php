@@ -3,10 +3,12 @@ declare(strict_types=1);
 namespace Pixiekat\HMFPSearchToolBundle\Repository;
 
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 use Pixiekat\HMFPSearchToolBundle\Entity;
+use Pixiekat\HMFPSearchToolBundle\Enum\PhysicianVocabulary;
 use Pixiekat\SymfonyHelpers\Traits\Repository\PaginationTrait;
 use Symfony\Bundle\SecurityBundle\Security;
 
@@ -34,16 +36,51 @@ class PhysicianRepository extends ServiceEntityRepository {
    *
    * Named rather than inlined as magic numbers so the ORDER OF PREFERENCE is
    * legible in one place, and so a template can explain to a user why a result
-   * ranked where it did. The gaps between values are deliberate — there is room
-   * to slot a new tier in without renumbering the rest.
+   * ranked where it did.
    */
-  public const SCORE_EXACT_FULL    = 100; // "anne m. valente" typed in full
-  public const SCORE_EXACT_SURNAME = 90;  // "valente"
-  public const SCORE_PREFIX_FULL   = 80;  // "anne m. val…"
-  public const SCORE_PREFIX_SURNAME = 70; // "val…" matching Valente
-  public const SCORE_CONTAINS      = 60;  // "lent" appearing anywhere
-  public const SCORE_PHONETIC      = 30;  // "smyth" reaching Smith — see below
-  public const SCORE_BROWSE        = 0;   // no search term; filters only
+  /*
+   * ── The order comes from the specification ────────────────────────────────
+   *   Rule: an exact NAME match always ranks highest.
+   *   Then: exact specialty → clinical interest → keyword relevance →
+   *         location proximity → research relevance.
+   *
+   * The two trailing tiers are not implemented: proximity needs coordinates
+   * that Facility does not yet carry, and research relevance is a later phase.
+   * Their absence is why the gaps below are wide — a proximity component can be
+   * slotted in without renumbering anything above it.
+   */
+
+  /** Someone typed the whole name. Beats everything, by rule. */
+  public const SCORE_EXACT_FULL    = 1000;
+
+  /** Someone typed just the surname — still an exact name match. */
+  public const SCORE_EXACT_SURNAME = 900;
+
+  /** The query IS a specialty: "cardiology" finding every cardiologist. */
+  public const SCORE_EXACT_SPECIALTY = 800;
+
+  /** The query IS a clinical interest: "heart failure". */
+  public const SCORE_EXACT_INTEREST = 700;
+
+  /* ── Keyword relevance, in descending confidence ────────────────────────── */
+  public const SCORE_PREFIX_FULL     = 600; // "anne m. val…"
+  public const SCORE_PREFIX_SURNAME  = 550; // "val…" matching Valente
+  public const SCORE_CONTAINS        = 500; // "lent" anywhere in the name
+  public const SCORE_PARTIAL_SPECIALTY = 400; // "cardio" inside a specialty name
+  public const SCORE_PARTIAL_INTEREST  = 350; // "heart" inside an interest
+
+  /**
+   * Phonetic — last, and far below everything literal.
+   *
+   * SOUNDEX is noisy (it returns Khan and Kim for "kohen"), so a phonetic hit
+   * must never displace something the user actually typed. The gap is large on
+   * purpose: no combination of weaker signals should lift a phonetic match
+   * above a literal one.
+   */
+  public const SCORE_PHONETIC      = 200;
+
+  /** No search term; filters only. Ordering falls back to name. */
+  public const SCORE_BROWSE        = 0;
 
   /**
    * The many-to-many taxonomies that can be filtered on.
@@ -104,7 +141,12 @@ class PhysicianRepository extends ServiceEntityRepository {
   }
 
   /**
-   * Searches physicians by name, with optional filters.
+   * Searches physicians by free text, with optional filters.
+   *
+   * The query is matched against the NAME, the SPECIALTY and the CLINICAL
+   * INTERESTS together, so "cardiology" finds every cardiologist rather than
+   * only someone unfortunate enough to be surnamed Cardiology. Results are
+   * ranked by the tiers above, in the order the specification sets out.
    *
    * NOTE: Raw SQL is used here rather than DQL because of the use of
    * SOUNDEX() and SUBSTRING_INDEX(), which have no DQL equivalent. This allows
@@ -115,7 +157,8 @@ class PhysicianRepository extends ServiceEntityRepository {
    * (e.g., Lu, Li, Ma, Ho, Wu) unfindable. A plain LIKE scan is used instead,
    * which does not have this limitation.
    *
-   * @param string $term Free-text name query; '' browses by filter alone.
+   * @param string $term Free-text query over name, specialty and interests;
+   *   '' browses by filter alone.
    * @param array $taxonomyFilters Keyed by taxonomy — see self::TAXONOMY_FILTERS.
    * @param ?string $credential Restrict to this PRIMARY credential, e.g. 'MD'.
    * @param int $page The page number for pagination (1-based).
@@ -135,6 +178,16 @@ class PhysicianRepository extends ServiceEntityRepository {
     $where  = [];
     $params = [];
 
+    // ── Which taxonomy terms does the query itself name? ────────────────────
+    // Resolved ONCE, up front, rather than joining vocabulary_terms and running
+    // a LIKE against it for every physician. That table holds ~400 rows, so
+    // matching it costs almost nothing; doing the same work per physician would
+    // multiply it by 10,933.
+    //
+    // What comes back is four id lists, which the main query then uses through
+    // an indexed `term_id IN (…)` — an index lookup rather than a scan.
+    $matchedTerms = $term === '' ? null : $this->matchTerms($term);
+
     // $term is the search query that we're searching for. Obviously we don't
     // run an empty search.
     if ($term !== '') {
@@ -142,8 +195,33 @@ class PhysicianRepository extends ServiceEntityRepository {
       // utf8mb4_general_ci already compares case-insensitively, but stating it
       // explicitly means the behaviour does not silently change if someone
       // later alters the collation to a _bin or _cs variant.
-      $where[] = '(LOWER(p.legal_name) LIKE :contains '
+      // A free-text query now reaches beyond the name. Per the specification it
+      // searches name, specialty and clinical interest together — so
+      // "cardiology" finds every cardiologist, not just anyone surnamed
+      // Cardiology.
+      //
+      // The term clause is only added when the query actually matched
+      // something. An empty IN () is a syntax error in MySQL, and building one
+      // defensively as `IN (0)` would be a wasted subquery on every search that
+      // happens to be a plain name.
+      $nameClause = '(LOWER(p.legal_name) LIKE :contains '
         . "OR SOUNDEX(SUBSTRING_INDEX(p.legal_name, ' ', -1)) = SOUNDEX(:raw))";
+
+      $allTermIds = $matchedTerms['all'] ?? [];
+
+      if ($allTermIds !== []) {
+        $nameClause = sprintf(
+          '(%s OR EXISTS (SELECT 1 FROM physician_terms qt
+                           WHERE qt.physician_id = p.id AND qt.term_id IN (%s)))',
+          $nameClause,
+          // Interpolated because these are ints this method produced from its
+          // own query — never request data. Binding an array would need
+          // ARRAY_INT type plumbing for no gain.
+          implode(',', array_map('intval', $allTermIds)),
+        );
+      }
+
+      $where[] = $nameClause;
 
       $params['raw']      = mb_strtolower($term);
       $params['prefix']   = $this->escapeLike(mb_strtolower($term)) . '%';
@@ -223,23 +301,35 @@ class PhysicianRepository extends ServiceEntityRepository {
       return ['results' => [], 'total' => 0, 'scores' => []];
     }
 
-    // The scored page
+    // ── The scored page ─────────────────────────────────────────────────────
+    // A CASE, so the FIRST matching branch wins and the branches are written in
+    // the specification's priority order. That is what enforces "exact name
+    // always highest": it is the first test, so nothing below can outrank it,
+    // whatever else the physician also matches.
     $scoreSql = $term === ''
       ? (string) self::SCORE_BROWSE
       : sprintf(
         'CASE
             WHEN LOWER(p.legal_name) = :raw THEN %d
             WHEN LOWER(SUBSTRING_INDEX(p.legal_name, \' \', -1)) = :raw THEN %d
+            %s
+            %s
             WHEN LOWER(p.legal_name) LIKE :prefix THEN %d
             WHEN LOWER(SUBSTRING_INDEX(p.legal_name, \' \', -1)) LIKE :prefix THEN %d
             WHEN LOWER(p.legal_name) LIKE :contains THEN %d
+            %s
+            %s
             ELSE %d
         END',
         self::SCORE_EXACT_FULL,
         self::SCORE_EXACT_SURNAME,
+        $this->termScoreBranch($matchedTerms['exactSpecialty'] ?? [], self::SCORE_EXACT_SPECIALTY),
+        $this->termScoreBranch($matchedTerms['exactInterest'] ?? [], self::SCORE_EXACT_INTEREST),
         self::SCORE_PREFIX_FULL,
         self::SCORE_PREFIX_SURNAME,
         self::SCORE_CONTAINS,
+        $this->termScoreBranch($matchedTerms['partialSpecialty'] ?? [], self::SCORE_PARTIAL_SPECIALTY),
+        $this->termScoreBranch($matchedTerms['partialInterest'] ?? [], self::SCORE_PARTIAL_INTEREST),
         self::SCORE_PHONETIC,
       );
 
@@ -336,6 +426,101 @@ class PhysicianRepository extends ServiceEntityRepository {
     }
 
     return ['results' => $ordered, 'total' => $total, 'scores' => $scores];
+  }
+
+  /**
+   * Finds the taxonomy terms a free-text query names.
+   *
+   * ── Why this is a separate, up-front query ────────────────────────────────
+   * The alternative is joining vocabulary_terms into the main search and
+   * running a LIKE against it per physician. vocabulary_terms holds a few
+   * hundred rows, so matching it once costs almost nothing — doing it per
+   * physician multiplies that by 10,933 for no additional information.
+   *
+   * Resolving to ids first also means the main query can use `term_id IN (…)`
+   * against an indexed column, which is a lookup rather than a scan.
+   *
+   * ── Exact and partial are kept apart ──────────────────────────────────────
+   * They score differently and the specification treats them differently: an
+   * exact specialty match is a strong signal ("cardiology" — this person IS a
+   * cardiologist), a partial one is weak ("cardio" — might be Cardiology, might
+   * be Cardiothoracic Surgery). Collapsing them would rank a substring hit as
+   * highly as someone typing the specialty's full name.
+   *
+   * @return array{
+   *   exactSpecialty: list<int>, partialSpecialty: list<int>,
+   *   exactInterest: list<int>,  partialInterest: list<int>,
+   *   all: list<int>,
+   * }
+   */
+  private function matchTerms(string $term): array {
+    $lower = mb_strtolower(trim($term));
+
+    $rows = $this->entityManager->getConnection()->executeQuery(
+      'SELECT t.id, v.name AS vocabulary, LOWER(t.name) = :raw AS is_exact
+         FROM vocabulary_terms t
+         JOIN vocabularies v ON v.id = t.vocabulary_id
+        WHERE v.name IN (:vocabularies)
+          AND LOWER(t.name) LIKE :contains',
+      [
+        'raw'          => $lower,
+        'contains'     => '%' . $this->escapeLike($lower) . '%',
+        'vocabularies' => [
+          PhysicianVocabulary::Specialty->value,
+          PhysicianVocabulary::ClinicalInterest->value,
+        ],
+      ],
+      ['vocabularies' => ArrayParameterType::STRING],
+    )->fetchAllAssociative();
+
+    $matched = [
+      'exactSpecialty'   => [],
+      'partialSpecialty' => [],
+      'exactInterest'    => [],
+      'partialInterest'  => [],
+      'all'              => [],
+    ];
+
+    foreach ($rows as $row) {
+      $id      = (int) $row['id'];
+      $isExact = (bool) $row['is_exact'];
+
+      $bucket = match (true) {
+        $row['vocabulary'] === PhysicianVocabulary::Specialty->value && $isExact  => 'exactSpecialty',
+        $row['vocabulary'] === PhysicianVocabulary::Specialty->value              => 'partialSpecialty',
+        $isExact                                                                  => 'exactInterest',
+        default                                                                   => 'partialInterest',
+      };
+
+      $matched[$bucket][] = $id;
+      $matched['all'][]   = $id;
+    }
+
+    return $matched;
+  }
+
+  /**
+   * One CASE branch testing whether a physician holds any of these terms.
+   *
+   * Returns an empty string when the list is empty, which removes the branch
+   * from the CASE entirely — both because `IN ()` is a syntax error in MySQL
+   * and because a branch that can never match is a subquery evaluated for
+   * nothing on every row.
+   *
+   * @param list<int> $termIds
+   */
+  private function termScoreBranch(array $termIds, int $score): string {
+    if ($termIds === []) {
+      return '';
+    }
+
+    return sprintf(
+      'WHEN EXISTS (SELECT 1 FROM physician_terms st
+                     WHERE st.physician_id = p.id AND st.term_id IN (%s)) THEN %d',
+      // Ints from this class's own query, never from the request.
+      implode(',', array_map('intval', $termIds)),
+      $score,
+    );
   }
 
   /**
