@@ -158,6 +158,43 @@
         </select>
       </div>
 
+      {#
+        ── Distance ───────────────────────────────────────────────────────────
+        Anchored on a facility rather than a typed postcode. Turning "02215"
+        into coordinates needs a ZIP-centroid dataset or a geocoding service,
+        neither of which exists yet; anchoring on a known site needs no external
+        data and answers what most people are actually asking — "who is near the
+        hospital I already go to?"
+
+        Shown only when at least one facility has coordinates, so the control
+        never appears as something that silently does nothing.
+      #}
+      {% if placedFacilities is not empty %}
+        <div class="filter">
+          <label for="near">Near</label>
+          <select id="near" name="near">
+            <option value="">Anywhere</option>
+            {% for option in placedFacilities %}
+              <option value="{{ option.id }}" {{ option.id == nearFacilityId ? 'selected' : '' }}>
+                {{ option.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="filter">
+          <label for="radius">Within</label>
+          <select id="radius" name="radius" aria-describedby="radius-hint">
+            {% for miles in radiusOptions %}
+              <option value="{{ miles }}" {{ miles == radius ? 'selected' : '' }}>
+                {{ miles }} mile{{ miles == 1 ? '' : 's' }}
+              </option>
+            {% endfor %}
+          </select>
+          <p id="radius-hint" class="hint">Only applies when a site is chosen.</p>
+        </div>
+      {% endif %}
+
       <div class="filter">
         <label for="credential">Credential</label>
         <select id="credential" name="credential">
@@ -214,8 +251,23 @@
       <h2 id="results-heading">
         {{ total|number_format }} provider{{ total == 1 ? '' : 's' }}
         {%- if term is not empty %} matching “{{ term }}”{% endif %}
+        {%- if nearFacility %}
+          <span class="muted">· within {{ radius }} mile{{ radius == 1 ? '' : 's' }} of {{ nearFacility.name }}</span>
+        {%- endif %}
         {%- if pages > 1 %} <span class="muted">· page {{ page }} of {{ pages }}</span>{% endif %}
       </h2>
+
+      {#
+        Say how many SITES the radius caught, not just how many physicians.
+        "0 providers within 5 miles" is ambiguous — it could mean no sites are
+        that close, or sites are but nobody works there. Naming the site count
+        distinguishes the two without the user having to guess.
+      #}
+      {% if nearFacility %}
+        <p class="muted">
+          {{ nearbyCount }} site{{ nearbyCount == 1 ? '' : 's' }} within that radius.
+        </p>
+      {% endif %}
 
       {#
         An ordered list, because these results ARE ranked — best match first.

@@ -45,10 +45,13 @@ class PhysicianRepository extends ServiceEntityRepository {
    *   Then: exact specialty → clinical interest → keyword relevance →
    *         location proximity → research relevance.
    *
-   * The two trailing tiers are not implemented: proximity needs coordinates
-   * that Facility does not yet carry, and research relevance is a later phase.
-   * Their absence is why the gaps below are wide — a proximity component can be
-   * slotted in without renumbering anything above it.
+   * Proximity is applied as a FILTER rather than as a score tier: a radius is
+   * a hard boundary — "not within ten miles" means not a result at all, not a
+   * result ranked lower — so it narrows the set and the tiers below then rank
+   * what remains. Ordering by distance within that set is the caller's choice;
+   * see FacilityRepository::near(), which returns nearest-first.
+   *
+   * Research relevance is a later phase, which is why the gaps below stay wide.
    */
 
   /** Someone typed the whole name. Beats everything, by rule. */
@@ -83,16 +86,6 @@ class PhysicianRepository extends ServiceEntityRepository {
   /** No search term; filters only. Ordering falls back to name. */
   public const SCORE_BROWSE        = 0;
 
-  /**
-   * The many-to-many taxonomies that can be filtered on.
-   *
-   * Every taxonomy hanging off Physician has the same shape — a join table with
-   * physician_id on one side and the taxonomy's id on the other — so filtering
-   * is described here as data rather than written out per taxonomy in search().
-   * Six more are planned (Specialty, ClinicalInterest, Condition, Procedure,
-   * BoardCertification, Language) and each should cost one line here plus a
-   * control in the template, not another branch in the query builder.
-   */
   /**
    * Filters backed by a DEDICATED table — one join table per entity.
    *
@@ -176,6 +169,10 @@ class PhysicianRepository extends ServiceEntityRepository {
    * @param ?string $credential Restrict to this PRIMARY credential, e.g. 'MD'.
    * @param int $page The page number for pagination (1-based).
    * @param int $perPage The number of results per page for pagination.
+   * @param list<int>|null $nearFacilityIds Restrict to physicians practising at
+   *   one of these facilities. null means no proximity filter; an EMPTY array
+   *   means a radius was applied and nothing fell inside it, which matches
+   *   nobody — the two are not interchangeable.
    * @return array{results: Entity\Physician[], total: int, scores: array<int, int>}
    */
   public function search(
@@ -184,6 +181,7 @@ class PhysicianRepository extends ServiceEntityRepository {
     ?string $credential = null,
     int $page = 1,
     int $perPage = 20,
+    ?array $nearFacilityIds = null,
   ): array {
     $term = trim($term);
     $page = max(1, $page);
@@ -296,6 +294,31 @@ class PhysicianRepository extends ServiceEntityRepository {
       // unusable dropdown and a usable one.
       $where[] = "TRIM(SUBSTRING_INDEX(p.credentials, ',', 1)) = :credential";
       $params['credential'] = $credential;
+    }
+
+    // ── Proximity ───────────────────────────────────────────────────────────
+    // The caller has already worked out WHICH facilities fall inside the
+    // radius — that is a question about twenty rows and belongs in
+    // FacilityRepository. By the time it reaches here it is an ordinary
+    // "practises at one of these sites" restriction, which is a plain indexed
+    // lookup.
+    //
+    // An EMPTY array is meaningful and must not be confused with null: null is
+    // "no proximity filter", while an empty array is "a radius was given and
+    // nothing falls inside it", which has to match nobody. Collapsing the two
+    // would silently return every physician for a search that should return
+    // none.
+    if ($nearFacilityIds !== null) {
+      if ($nearFacilityIds === []) {
+        $where[] = '1 = 0';
+      }
+      else {
+        $where[] = sprintf(
+          'EXISTS (SELECT 1 FROM physician_facilities nf
+                    WHERE nf.physician_id = p.id AND nf.facility_id IN (%s))',
+          implode(',', array_map('intval', $nearFacilityIds)),
+        );
+      }
     }
 
     $whereSql = $where === [] ? '1 = 1' : implode(' AND ', $where);

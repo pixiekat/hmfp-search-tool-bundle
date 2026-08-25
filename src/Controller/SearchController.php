@@ -71,6 +71,18 @@ final class SearchController extends AbstractController {
    */
   private const SEED_LIMIT = 30;
 
+  /**
+   * Radii offered by the distance filter, in miles.
+   *
+   * A fixed list rather than a free number field. It keeps the control simple,
+   * it stops someone asking for a 4,000-mile radius, and every value here is a
+   * distance a patient would actually consider travelling for an appointment.
+   */
+  private const RADIUS_OPTIONS = [1, 5, 10, 25, 50];
+
+  /** Used when ?near is given without a radius. */
+  private const DEFAULT_RADIUS_MILES = 10;
+
   public function __construct(
     private readonly PixieHelperServices\AuditLogManager $auditLogManager,
     private readonly Repository\PhysicianRepository $physicians,
@@ -102,9 +114,48 @@ final class SearchController extends AbstractController {
     $credential = $this->queryString($request, 'credential') ?: null;
     $page       = $this->queryId($request, 'page') ?? 1;
 
+    // ── Proximity ───────────────────────────────────────────────────────────
+    // The centre point is a FACILITY the visitor picks, not a typed address.
+    // That is a deliberate limit of this phase: turning "02215" or a street
+    // address into coordinates needs either a ZIP-centroid dataset or a
+    // geocoding service, and neither exists here yet. Anchoring on a known site
+    // needs no external data and answers the question most people are actually
+    // asking — "who is near the hospital I already go to?"
+    //
+    // Resolving to facility ids happens HERE rather than in the physician
+    // query, because it is a question about twenty rows and belongs to
+    // FacilityRepository. What reaches search() is an ordinary id list.
+    $nearFacilityId = $this->queryId($request, 'near');
+    $radius         = $this->queryId($request, 'radius') ?? self::DEFAULT_RADIUS_MILES;
+
+    if (!in_array($radius, self::RADIUS_OPTIONS, true)) {
+      $radius = self::DEFAULT_RADIUS_MILES;
+    }
+
+    $nearFacility    = $nearFacilityId === null ? null : $this->facilities->find($nearFacilityId);
+    $nearFacilityIds = null;
+    $nearResults     = [];
+
+    if ($nearFacility !== null && $nearFacility->hasCoordinates()) {
+      $nearResults = $this->facilities->near(
+        (float) $nearFacility->getLatitude(),
+        (float) $nearFacility->getLongitude(),
+        (float) $radius,
+      );
+
+      // Note this is an ARRAY, possibly empty — never null — once a usable
+      // centre exists. Empty means "a radius was applied and nothing fell
+      // inside it", which must match nobody; null would mean "no proximity
+      // filter" and match everybody. See search().
+      $nearFacilityIds = array_map(
+        static fn (array $hit): int => $hit['facility']->getId(),
+        $nearResults,
+      );
+    }
+
     // Did the user actually ask for anything? If not, don't run the search and don't log it.
     $activeFilters = array_filter($taxonomyFilters, static fn (?int $id): bool => $id !== null);
-    $hasCriteria   = $term !== '' || $activeFilters !== [] || $credential !== null;
+    $hasCriteria   = $term !== '' || $activeFilters !== [] || $credential !== null || $nearFacilityIds !== null;
 
     $results = [];
     $total   = 0;
@@ -118,6 +169,7 @@ final class SearchController extends AbstractController {
         credential: $credential,
         page: $page,
         perPage: self::PER_PAGE,
+        nearFacilityIds: $nearFacilityIds,
       );
 
       $results = $found['results'];
@@ -148,7 +200,19 @@ final class SearchController extends AbstractController {
       'specialtyId'  => $taxonomyFilters['specialty'] ?? null,
       'credential'   => $credential,
       'hasCriteria'  => $hasCriteria,
-      'activeFilterCount' => count($activeFilters) + ($credential !== null ? 1 : 0),
+      'activeFilterCount' => count($activeFilters)
+        + ($credential !== null ? 1 : 0)
+        + ($nearFacilityIds !== null ? 1 : 0),
+
+      // Proximity
+      'nearFacilityId' => $nearFacilityId,
+      'nearFacility'   => $nearFacility,
+      'radius'         => $radius,
+      'radiusOptions'  => self::RADIUS_OPTIONS,
+      'nearbyCount'    => count($nearResults),
+      // Only facilities that have been placed can anchor a distance search.
+      // Offering the rest would produce a control that silently does nothing.
+      'placedFacilities' => $this->facilities->findPlaced(),
 
       // What came back
       'physicians' => $results,
