@@ -26,7 +26,28 @@
         moment someone types, so it cannot serve as the field's name — and it is
         invisible to a screen reader reading the form's controls.
       #}
-      <label for="q">Search by name</label>
+      <label for="q">Search</label>
+      {#
+        ── Typeahead is built on <datalist>, deliberately ────────────────────
+        A hand-rolled autocomplete is where accessibility usually breaks: it
+        needs the full combobox pattern — aria-expanded, aria-activedescendant,
+        arrow-key handling, an announcement of how many options appeared — and a
+        <div> of clickable rows under an input is unusable by keyboard or screen
+        reader. <datalist> is the browser's own implementation of exactly that
+        widget, so the keyboard handling, the announcements and the platform
+        conventions all come for free and correct.
+
+        It layers cleanly:
+          no JS   — the list still holds the seeded specialties below
+          with JS — the Stimulus controller refills it from /search/suggest
+
+        What it costs: no rich rows. A suggestion cannot show "40 providers" or
+        a type badge, and picking one fills the box rather than navigating. That
+        is an acceptable trade here, because free text now searches specialties
+        and interests — so filling the box with "Internal Medicine-Cardiology"
+        and pressing Search lands on the exact-specialty tier, which is the
+        result the user wanted anyway.
+      #}
       <input
         type="search"
         id="q"
@@ -35,10 +56,25 @@
         maxlength="100"
         spellcheck="false"
         autocapitalize="words"
+        autocomplete="off"
+        list="q-suggestions"
         aria-describedby="q-hint"
+        data-controller="hmfp-suggest"
+        data-hmfp-suggest-url-value="{{ path('hmfp_search_tool_search_suggest') }}"
       >
+      {#
+        autocomplete="off" above turns off the BROWSER's own history dropdown,
+        which would otherwise compete with the datalist and show a second,
+        unrelated list of things this person typed before.
+      #}
+      <datalist id="q-suggestions">
+        {% for suggestion in suggestionSeed %}
+          <option value="{{ suggestion }}"></option>
+        {% endfor %}
+      </datalist>
       <p id="q-hint" class="hint">
-        Surname, full name, or part of one. Close spellings are matched too — “smyth” finds “Smith”.
+        Name, specialty or clinical interest. Close spellings are matched too —
+        “smyth” finds “Smith”.
       </p>
     </div>
 

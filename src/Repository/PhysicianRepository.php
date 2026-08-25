@@ -4,6 +4,7 @@ namespace Pixiekat\HMFPSearchToolBundle\Repository;
 
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\ParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
@@ -426,6 +427,128 @@ class PhysicianRepository extends ServiceEntityRepository {
     }
 
     return ['results' => $ordered, 'total' => $total, 'scores' => $scores];
+  }
+
+  /**
+   * Suggestions for a partially-typed query.
+   *
+   * ── Suggests what search actually matches ─────────────────────────────────
+   * Names, specialties and clinical interests — the same three things a
+   * free-text query is scored against. A typeahead that offers something the
+   * search cannot then find is worse than none at all, because it teaches the
+   * user to trust it.
+   *
+   * That is also why the suggestion is a plain STRING rather than a link to a
+   * pre-filtered URL: picking one fills the search box, and searching for it
+   * hits the exact-specialty or exact-interest tier, which is precisely the
+   * result the user wanted. The typeahead and the ranking reinforce each other
+   * instead of being two separate notions of relevance.
+   *
+   * ── Ordering ──────────────────────────────────────────────────────────────
+   * Taxonomy terms first, then names. A specialty is a broad, useful query;
+   * a single physician's name is narrow, and someone typing "car" is far more
+   * likely to be looking for cardiology than for Dr Carmichael. Within each
+   * group, prefix matches come before substring matches, because the thing you
+   * are part-way through typing is more likely to start with what you typed.
+   *
+   * @return list<array{value: string, kind: string}>
+   */
+  public function suggest(string $term, int $limit = 10): array {
+    $term = trim($term);
+
+    // Two characters is the floor. One character matches most of the table and
+    // suggests nothing useful, while costing a scan on every keystroke.
+    if (mb_strlen($term) < 2) {
+      return [];
+    }
+
+    $lower    = mb_strtolower($term);
+    $prefix   = $this->escapeLike($lower) . '%';
+    $contains = '%' . $this->escapeLike($lower) . '%';
+
+    $connection = $this->entityManager->getConnection();
+
+    // ── Taxonomy terms ──────────────────────────────────────────────────────
+    // Only vocabularies that free text is scored against. Language and
+    // department are filters rather than keywords, so suggesting them here
+    // would produce a query that matches nothing.
+    $terms = $connection->executeQuery(
+      "SELECT t.name AS value, v.name AS kind,
+              (LOWER(t.name) LIKE :prefix) AS is_prefix
+         FROM vocabulary_terms t
+         JOIN vocabularies v ON v.id = t.vocabulary_id
+        WHERE v.name IN (:vocabularies)
+          AND LOWER(t.name) LIKE :contains
+        ORDER BY is_prefix DESC, CHAR_LENGTH(t.name) ASC, t.name ASC
+        LIMIT :limit",
+      [
+        'prefix'       => $prefix,
+        'contains'     => $contains,
+        'limit'        => $limit,
+        'vocabularies' => [
+          PhysicianVocabulary::Specialty->value,
+          PhysicianVocabulary::ClinicalInterest->value,
+        ],
+      ],
+      [
+        'limit'        => ParameterType::INTEGER,
+        'vocabularies' => ArrayParameterType::STRING,
+      ],
+    )->fetchAllAssociative();
+
+    $suggestions = [];
+    foreach ($terms as $row) {
+      $suggestions[] = ['value' => (string) $row['value'], 'kind' => (string) $row['kind']];
+    }
+
+    // ── Physician names ─────────────────────────────────────────────────────
+    // Only the remaining slots, so a query that is clearly a specialty does not
+    // waste half the list on coincidental name matches.
+    $remaining = $limit - count($suggestions);
+
+    if ($remaining > 0) {
+      $names = $connection->executeQuery(
+        "SELECT DISTINCT p.legal_name AS value,
+                (LOWER(p.legal_name) LIKE :prefix
+                 OR LOWER(SUBSTRING_INDEX(p.legal_name, ' ', -1)) LIKE :prefix) AS is_prefix
+           FROM physicians p
+          WHERE LOWER(p.legal_name) LIKE :contains
+          ORDER BY is_prefix DESC, p.legal_name ASC
+          LIMIT :limit",
+        ['prefix' => $prefix, 'contains' => $contains, 'limit' => $remaining],
+        ['limit' => ParameterType::INTEGER],
+      )->fetchAllAssociative();
+
+      foreach ($names as $row) {
+        $suggestions[] = ['value' => (string) $row['value'], 'kind' => 'physician'];
+      }
+    }
+
+    return $suggestions;
+  }
+
+  /**
+   * The most common specialties, for seeding the suggestion list.
+   *
+   * Rendered into the page's <datalist> so that a visitor with no JavaScript
+   * still gets native autocomplete on the queries most likely to be useful.
+   * The dynamic endpoint replaces these once scripting is available.
+   *
+   * @return list<string>
+   */
+  public function commonSpecialties(int $limit = 30): array {
+    return $this->entityManager->getConnection()->executeQuery(
+      "SELECT t.name
+         FROM vocabulary_terms t
+         JOIN vocabularies v ON v.id = t.vocabulary_id
+         JOIN physician_terms pt ON pt.term_id = t.id
+        WHERE v.name = :vocabulary
+        GROUP BY t.id
+        ORDER BY COUNT(pt.physician_id) DESC, t.name ASC
+        LIMIT :limit",
+      ['vocabulary' => PhysicianVocabulary::Specialty->value, 'limit' => $limit],
+      ['limit' => ParameterType::INTEGER],
+    )->fetchFirstColumn();
   }
 
   /**

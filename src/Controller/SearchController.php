@@ -9,6 +9,7 @@ use Pixiekat\HMFPSearchToolBundle\Services\PhysicianTaxonomyManager;
 use Pixiekat\SymfonyHelpers\Services as PixieHelperServices;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
@@ -52,6 +53,23 @@ final class SearchController extends AbstractController {
    * edit in the admin UI shows up without anyone needing to clear a cache.
    */
   private const VOCABULARY_TTL = 3600;
+
+  /**
+   * How many suggestions the endpoint returns.
+   *
+   * Ten is about what fits in a native datalist dropdown without scrolling. A
+   * longer list is not more helpful — if the right answer is not near the top,
+   * the user types another character instead of reading forty options.
+   */
+  private const SUGGESTION_LIMIT = 10;
+
+  /**
+   * How many specialties seed the no-JavaScript datalist.
+   *
+   * Larger than SUGGESTION_LIMIT because the browser filters this list itself
+   * as the user types, so it is a corpus rather than a result set.
+   */
+  private const SEED_LIMIT = 30;
 
   public function __construct(
     private readonly PixieHelperServices\AuditLogManager $auditLogManager,
@@ -160,7 +178,78 @@ final class SearchController extends AbstractController {
       'languageId'        => $taxonomyFilters['language'] ?? null,
       'clinicalInterestOptions' => $this->taxonomy->termsByName(PhysicianVocabulary::ClinicalInterest),
       'clinicalInterestId'      => $taxonomyFilters['clinical_interest'] ?? null,
+
+      // Seeds the <datalist> so native autocomplete works with NO JavaScript at
+      // all. The suggest endpoint replaces these once scripting is available;
+      // without it, the visitor still gets the queries most likely to be useful.
+      'suggestionSeed' => $this->cachedCommonSpecialties(),
     ]);
+  }
+
+  /**
+   * Suggestions for the search box.
+   *
+   * ── Same repository method the page uses ──────────────────────────────────
+   * PhysicianRepository::suggest() draws from the same names, specialties and
+   * interests that free-text search is scored against. A typeahead backed by a
+   * different notion of relevance eventually offers something the search cannot
+   * find, and one bad suggestion costs more trust than ten good ones earn.
+   *
+   * ── Why this returns strings and not links ────────────────────────────────
+   * Picking a suggestion fills the search box; it does not navigate. That keeps
+   * the enhanced flow identical to the unenhanced one — you still press Search,
+   * still land on a normal results URL — and it is what allows the whole thing
+   * to be built on <datalist>, where the browser owns the interaction.
+   *
+   * Not cached: the response varies per keystroke, so a cache would hold
+   * thousands of one-shot entries. The query itself is a couple of indexed
+   * LIKEs over small tables.
+   */
+  #[IsGranted(Interfaces\Security\Voter\SearchVoterInterface::PERMISSION_CAN_ACCESS_SEARCH)]
+  #[Route('/search/suggest', name: 'hmfp_search_tool_search_suggest', methods: ['GET'])]
+  public function suggest(Request $request): JsonResponse {
+    $term = $this->queryString($request, 'q');
+
+    if (mb_strlen($term) > self::MAX_TERM_LENGTH) {
+      $term = mb_substr($term, 0, self::MAX_TERM_LENGTH);
+    }
+
+    $suggestions = $this->physicians->suggest($term, self::SUGGESTION_LIMIT);
+
+    $response = new JsonResponse([
+      'query'       => $term,
+      'suggestions' => $suggestions,
+    ]);
+
+    // Private, because the route is behind authentication — a shared cache must
+    // not hand one user's suggestions to another. Short-lived because the
+    // underlying vocabulary changes only on import or approval, so a few
+    // seconds of staleness costs nothing while absorbing the burst of requests
+    // a fast typist generates.
+    $response->setPrivate();
+    $response->setMaxAge(30);
+
+    return $response;
+  }
+
+  /**
+   * The datalist seed, cached alongside the credential options.
+   *
+   * Same reasoning as cachedCredentials(): this aggregates over
+   * physician_terms to rank specialties by how many providers hold them, which
+   * is real work to produce a list that changes only when an import runs.
+   *
+   * @return list<string>
+   */
+  private function cachedCommonSpecialties(): array {
+    return $this->cache->get(
+      'hmfp_search.common_specialties',
+      function (ItemInterface $item): array {
+        $item->expiresAfter(self::VOCABULARY_TTL);
+
+        return $this->physicians->commonSpecialties(self::SEED_LIMIT);
+      },
+    );
   }
 
   /**
