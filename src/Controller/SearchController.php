@@ -3,7 +3,9 @@ declare(strict_types=1);
 namespace Pixiekat\HMFPSearchToolBundle\Controller;
 
 use Pixiekat\HMFPSearchToolBundle\Interfaces;
+use Pixiekat\HMFPSearchToolBundle\Enum\PhysicianVocabulary;
 use Pixiekat\HMFPSearchToolBundle\Repository;
+use Pixiekat\HMFPSearchToolBundle\Services\PhysicianTaxonomyManager;
 use Pixiekat\SymfonyHelpers\Services as PixieHelperServices;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -56,6 +58,7 @@ final class SearchController extends AbstractController {
     private readonly Repository\PhysicianRepository $physicians,
     private readonly Repository\DepartmentRepository $departments,
     private readonly Repository\FacilityRepository $facilities,
+    private readonly PhysicianTaxonomyManager $taxonomy,
     private readonly CacheInterface $cache,
   ) {  }
 
@@ -146,6 +149,15 @@ final class SearchController extends AbstractController {
       'departmentOptions' => $this->departments->findBy([], ['name' => 'ASC']),
       'facilityOptions'   => $this->facilities->findBy([], ['name' => 'ASC']),
       'credentialOptions' => $this->cachedCredentials(),
+
+      // Shared-taxonomy options. Unlike the two above these are Terms, so they
+      // must be narrowed to one vocabulary — vocabulary_terms holds every
+      // taxonomy at once, and an unfiltered read would offer languages and
+      // conditions in the specialty dropdown.
+      'specialtyOptions'  => $this->taxonomy->termsByName(PhysicianVocabulary::Specialty),
+      'specialtyId'       => $taxonomyFilters['specialty'] ?? null,
+      'languageOptions'   => $this->taxonomy->termsByName(PhysicianVocabulary::Language),
+      'languageId'        => $taxonomyFilters['language'] ?? null,
     ]);
   }
 

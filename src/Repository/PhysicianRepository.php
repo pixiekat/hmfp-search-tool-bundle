@@ -58,10 +58,37 @@ class PhysicianRepository extends ServiceEntityRepository {
   private const TAXONOMY_FILTERS = [
     'department' => ['table' => 'physician_departments', 'column' => 'department_id'],
     'facility'   => ['table' => 'physician_facilities',  'column' => 'facility_id'],
-    // Planned, once the entities land:
-    // 'specialty'  => ['table' => 'physician_specialty',  'column' => 'specialty_id'],
-    // 'language'   => ['table' => 'physician_language',   'column' => 'language_id'],
-    // 'condition'  => ['table' => 'physician_condition',  'column' => 'condition_id'],
+
+    // Shared-taxonomy filters all point at the SAME join table and column —
+    // what distinguishes them is the vocabulary, which is why these entries
+    // carry a third key the dedicated ones do not need.
+    //
+    // The filter value is still a term id, and a term id already implies its
+    // vocabulary, so the extra condition is strictly redundant for a
+    // well-formed request. It is here because the request is not trustworthy:
+    // ?specialty=<id of a Language term> would otherwise filter happily by the
+    // wrong vocabulary. This is the application-level check that stands in for
+    // the foreign key a shared table cannot give us.
+    //
+    // Adding Language or Condition later is one line each.
+    'specialty' => [
+      'table'      => 'physician_terms',
+      'column'     => 'term_id',
+      'vocabulary' => 'specialty',
+    ],
+    'language' => [
+      'table'      => 'physician_terms',
+      'column'     => 'term_id',
+      'vocabulary' => 'language',
+    ],
+    // Populated by the edit projection rather than the import — see
+    // PhysicianEditManager::project(). Identical to filter against, which is
+    // the point of projecting into the same read model.
+    'clinical_interest' => [
+      'table'      => 'physician_terms',
+      'column'     => 'term_id',
+      'vocabulary' => 'clinical_interest',
+    ],
   ];
 
   /**
@@ -139,14 +166,32 @@ class PhysicianRepository extends ServiceEntityRepository {
       $alias       = 'tx' . $aliasIndex++;
       $placeholder = 'tx_' . $taxonomy;
 
+      // A vocabulary-qualified filter joins on through the term to its
+      // vocabulary, so a term id from the wrong vocabulary matches nothing
+      // instead of silently filtering by it.
+      $vocabularyJoin = '';
+      if (isset($join['vocabulary'])) {
+        $vocabularyJoin = sprintf(
+          ' AND EXISTS (SELECT 1 FROM vocabulary_terms %1$s_t
+            JOIN vocabularies %1$s_v ON %1$s_v.id = %1$s_t.vocabulary_id
+            WHERE %1$s_t.id = %1$s.%2$s AND %1$s_v.name = :%3$s_vocab)',
+          $alias,
+          $join['column'],
+          $placeholder,
+        );
+
+        $params[$placeholder . '_vocab'] = $join['vocabulary'];
+      }
+
       $where[] = sprintf(
-        'EXISTS (SELECT 1 FROM %s %s WHERE %s.physician_id = p.id AND %s.%s = :%s)',
+        'EXISTS (SELECT 1 FROM %s %s WHERE %s.physician_id = p.id AND %s.%s = :%s%s)',
         $join['table'],
         $alias,
         $alias,
         $alias,
         $join['column'],
         $placeholder,
+        $vocabularyJoin,
       );
 
       $params[$placeholder] = (int) $id;
@@ -236,10 +281,41 @@ class PhysicianRepository extends ServiceEntityRepository {
     // entity, and at 20 physicians per page the row count stays trivial. It would
     // NOT be safe with a Paginator, where the multiplied rows would corrupt LIMIT;
     // that is precisely why the page was selected by id above, before this query runs.
+    // ── One query per to-many association, not one query with all of them ────
+    // Joining several to-many collections in a SINGLE query multiplies their
+    // rows together: a physician in 8 departments at 10 facilities with 3
+    // specialties produces 8 × 10 × 3 = 240 rows on his own, and the page's
+    // total grows as a product. Running one query per association makes the
+    // cost a SUM instead — 8 + 10 + 3 — which stays predictable however many
+    // taxonomies get added later.
+    //
+    // Each query returns the same physicians. Doctrine's identity map hands
+    // back the entities already in memory and simply populates the collection
+    // that query joined, so three queries produce one fully-hydrated set. Only
+    // the first needs to select the physicians themselves.
     $physicians = $this->createQueryBuilder('p')
-      ->addSelect('d', 'f')
+      ->addSelect('d')
       ->leftJoin('p.departments', 'd')
+      ->where('p.id IN (:ids)')
+      ->setParameter('ids', $ids)
+      ->getQuery()
+      ->getResult();
+
+    $this->createQueryBuilder('p')
+      ->addSelect('f')
       ->leftJoin('p.facilities', 'f')
+      ->where('p.id IN (:ids)')
+      ->setParameter('ids', $ids)
+      ->getQuery()
+      ->getResult();
+
+    // Terms join through to their vocabulary as well. Without that second hop
+    // a template asking "is this a specialty?" would lazy-load the vocabulary
+    // once PER TERM — trading the N+1 on physicians for a worse one on terms.
+    $this->createQueryBuilder('p')
+      ->addSelect('t', 'tv')
+      ->leftJoin('p.terms', 't')
+      ->leftJoin('t.vocabulary', 'tv')
       ->where('p.id IN (:ids)')
       ->setParameter('ids', $ids)
       ->getQuery()

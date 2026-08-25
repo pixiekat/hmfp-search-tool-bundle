@@ -43,11 +43,34 @@
     </div>
 
     {#
-      Filters live in a fieldset so their shared purpose is announced once,
-      rather than each select being read as an unrelated control.
+      Filters collapse behind a <details>, which keeps the page short without a
+      line of JavaScript — the disclosure is native browser behaviour and works
+      with scripting off.
+
+      ── Why it opens itself when a filter is applied ──────────────────────
+      A collapsed panel hides the fact that filters ARE applied. Someone
+      arriving on a shared link showing "2 providers" would have no way to see
+      why, and no reason to think of opening a closed panel. Making `open`
+      conditional solves that with no JS and no state to remember: the panel is
+      open exactly when there is something inside worth seeing.
+
+      ── Why there is still a fieldset in here ─────────────────────────────
+      <summary> is a disclosure control, not a group label. It is not
+      programmatically associated with the fields it contains, so on its own a
+      screen reader reads four unrelated dropdowns with no shared context. The
+      fieldset restores that grouping; its legend is visually hidden because the
+      summary already shows the same words on screen.
     #}
-    <fieldset class="search-filters">
-      <legend>Narrow results</legend>
+    <details class="search-filters" {{ activeFilterCount > 0 ? 'open' : '' }}>
+      <summary>
+        Narrow results
+        {%- if activeFilterCount > 0 %}
+          <span class="filter-count">{{ activeFilterCount }} applied</span>
+        {%- endif %}
+      </summary>
+
+      <fieldset class="filters-grid">
+        <legend class="visually-hidden">Narrow results</legend>
 
       <div class="filter">
         <label for="department">Department</label>
@@ -55,6 +78,46 @@
           <option value="">All departments</option>
           {% for option in departmentOptions %}
             <option value="{{ option.id }}" {{ option.id == departmentId ? 'selected' : '' }}>
+              {{ option.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {#
+        Specialty is a Term in the shared taxonomy rather than an entity of its
+        own, but the control is identical — it posts a term id like any other
+        filter posts an entity id. The options are already narrowed to the
+        'specialty' vocabulary by the controller.
+
+        termsByName() keys by a normalised name for the importer's benefit, so
+        the values are sorted here for display rather than relying on that
+        key order.
+      #}
+      <div class="filter">
+        <label for="specialty">Specialty</label>
+        <select id="specialty" name="specialty">
+          <option value="">All specialties</option>
+          {% for option in specialtyOptions|sort((a, b) => a.name|lower <=> b.name|lower) %}
+            <option value="{{ option.id }}" {{ option.id == specialtyId ? 'selected' : '' }}>
+              {{ option.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {#
+        Second vocabulary in the same shared taxonomy, and the control is
+        identical to specialty's — which is the point. Only about a fifth of
+        providers list a language, so this narrows hard; that is the data, not a
+        bug.
+      #}
+      <div class="filter">
+        <label for="language">Language</label>
+        <select id="language" name="language">
+          <option value="">Any language</option>
+          {% for option in languageOptions|sort((a, b) => a.name|lower <=> b.name|lower) %}
+            <option value="{{ option.id }}" {{ option.id == languageId ? 'selected' : '' }}>
               {{ option.name }}
             </option>
           {% endfor %}
@@ -84,7 +147,8 @@
           {% endfor %}
         </select>
       </div>
-    </fieldset>
+      </fieldset>
+    </details>
 
     <div class="search-actions">
       <button type="submit">Search</button>
@@ -146,6 +210,11 @@
               {% if physician.credentials is not empty %}
                 <span class="credentials">{{ physician.credentials }}</span>
               {% endif %}
+
+              {# Propose edit #}
+              <span class="propose-edit">
+                <a href="{{ path('hmfp_search_tool_physician_propose_edit', { id: physician.id }) }}">Propose edit</a>
+              </span>
             </h3>
 
             {#
@@ -171,6 +240,63 @@
                 <span class="label">{{ physician.facilities|length == 1 ? 'Facility' : 'Facilities' }}:</span>
                 {% for facility in physician.facilities %}
                   <a href="{{ path('hmfp_search_tool_search', app.request.query.all|merge({facility: facility.id, page: 1})) }}">{{ facility.name }}</a>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              </p>
+            {% endif %}
+
+            {#
+              Narrowed to the specialty vocabulary rather than listing
+              physician.terms wholesale. That collection holds EVERY taxonomy —
+              today only specialties are wired, so the two look identical, but
+              the moment Language or Condition lands an unfiltered loop would
+              list languages under a heading reading "Specialties". The entity
+              is deliberately vocabulary-unaware; the filtering belongs here.
+
+              Both this and the vocabulary it reads are eager-loaded by
+              PhysicianRepository::search(), so neither costs a query.
+            #}
+            {% set specialties = physician.terms|filter(t => t.vocabulary and t.vocabulary.name == 'specialty') %}
+
+            {% if specialties is not empty %}
+              <p class="result-meta">
+                <span class="label">Specialt{{ specialties|length == 1 ? 'y' : 'ies' }}:</span>
+                {% for term in specialties|sort((a, b) => a.name|lower <=> b.name|lower) %}
+                  {#
+                    Mark the specialty that is currently being filtered on, so a
+                    result carrying several makes it obvious which one put it in
+                    this list.
+
+                    Compared against the controller's `specialtyId` rather than
+                    re-reading the query string: InputBag::get() throws on an
+                    array value in Symfony 8, so `?specialty[]=1` would take the
+                    template down. The controller already parsed this safely.
+                  #}
+                  {%- set link = path('hmfp_search_tool_search', app.request.query.all|merge({specialty: term.id, page: 1})) -%}
+                  {#
+                    Whitespace control matters here rather than being tidiness:
+                    without the `-` markers the newline and indentation between
+                    the </a> and the separator render as a real space, producing
+                    "Internal Medicine , Pulmonary Disease". Twig strips
+                    template whitespace only where told to.
+                  #}
+                  {%- if specialtyId is not null and term.id == specialtyId -%}
+                    <a href="{{ link }}" aria-current="true"><mark>{{ term.name }}</mark></a>
+                  {%- else -%}
+                    <a href="{{ link }}">{{ term.name }}</a>
+                  {%- endif -%}
+                  {%- if not loop.last %}, {% endif -%}
+                {% endfor %}
+              </p>
+            {% endif %}
+
+            {% set languages = physician.terms|filter(t => t.vocabulary and t.vocabulary.name == 'language') %}
+
+            {% if languages is not empty %}
+              <p class="result-meta">
+                <span class="label">{{ languages|length == 1 ? 'Language' : 'Languages' }}:</span>
+                {% for term in languages|sort((a, b) => a.name|lower <=> b.name|lower) %}
+                  {%- set link = path('hmfp_search_tool_search', app.request.query.all|merge({language: term.id, page: 1})) -%}
+                  <a href="{{ link }}">{{ term.name }}</a>{% if not loop.last %}, {% endif %}
                 {% endfor %}
               </p>
             {% endif %}

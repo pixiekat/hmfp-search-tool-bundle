@@ -5,6 +5,9 @@ namespace Pixiekat\HMFPSearchToolBundle\Command;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Pixiekat\HMFPSearchToolBundle\Entity;
+use Pixiekat\HMFPSearchToolBundle\Enum\PhysicianVocabulary;
+use Pixiekat\HMFPSearchToolBundle\Services\PhysicianTaxonomyManager;
+use Pixiekat\SymfonyHelpers\Entity as HelperEntity;
 use Pixiekat\HMFPSearchToolBundle\Repository\DepartmentRepository;
 use Pixiekat\HMFPSearchToolBundle\Repository\FacilityRepository;
 use Pixiekat\HMFPSearchToolBundle\Repository\PhysicianRepository;
@@ -205,6 +208,8 @@ final class ImportPhysiciansCommand extends Command {
     'degree'      => 'degree',
     'department'  => 'department',
     'facility_name' => 'facility_name',
+    'specialty'     => 'specialty',
+    'languages'     => 'languages',
   ];
 
   /**
@@ -223,6 +228,15 @@ final class ImportPhysiciansCommand extends Command {
   private const DEPARTMENT_SEPARATOR = ';';
 
   /**
+   * Separator WITHIN the languages cell.
+   *
+   * A comma, not a semicolon — the extract uses a different convention for this
+   * column than for department and specialty. See splitList() for why this is
+   * per-column rather than global.
+   */
+  private const LANGUAGE_SEPARATOR = ',';
+
+  /**
    * Column width of the varchar(255) columns being written.
    *
    * Doctrine would let an over-long value through, and MySQL would then either
@@ -237,6 +251,7 @@ final class ImportPhysiciansCommand extends Command {
     private readonly DepartmentRepository $departments,
     private readonly FacilityRepository $facilities,
     private readonly AuditLogManager $auditLogManager,
+    private readonly PhysicianTaxonomyManager $taxonomy,
   ) {
     parent::__construct();
   }
@@ -411,6 +426,26 @@ final class ImportPhysiciansCommand extends Command {
       );
     }
 
+    // ── Specialties: Terms in the shared taxonomy, not their own entity ─────
+    $specialtyIds       = [];
+    $specialtiesCreated = 0;
+
+    $io->section('Specialties');
+    [$specialtyIds, $specialtiesCreated] = $this->syncTerms(
+      $io,
+      $scan['specialtyNames'],
+      $dryRun,
+      PhysicianVocabulary::Specialty,
+    );
+
+    $io->section('Languages');
+    [$languageIds, $languagesCreated] = $this->syncTerms(
+      $io,
+      $scan['languageNames'],
+      $dryRun,
+      PhysicianVocabulary::Language,
+    );
+
     // ── Pass 2: import ──────────────────────────────────────────────────────
     $io->section('Pass 2 of 2 — importing physicians');
 
@@ -424,6 +459,10 @@ final class ImportPhysiciansCommand extends Command {
         departmentIds: $departmentIds,
         credIdFacilities: $scan['credIdFacilities'],
         facilityIds: $facilityIds,
+        credIdSpecialties: $scan['credIdSpecialties'],
+        specialtyIds: $specialtyIds,
+        credIdLanguages: $scan['credIdLanguages'],
+        languageIds: $languageIds,
         batchSize: $batchSize,
         limit: $limit,
         dryRun: $dryRun,
@@ -449,6 +488,8 @@ final class ImportPhysiciansCommand extends Command {
         ['— of the updates, adopted',      number_format($stats['adopted'])],
         ['Departments created',            $skipDepartments ? 'skipped' : number_format($departmentsCreated)],
         ['Facilities created',             $skipFacilities ? 'skipped' : number_format($facilitiesCreated)],
+        ['Specialties created',            number_format($specialtiesCreated)],
+        ['Languages created',              number_format($languagesCreated)],
         ['Links added',                    number_format($stats['linksAdded'])],
         ['Links removed',                  number_format($stats['linksRemoved'])],
         ['Duplicate rows (same cred_id)',  number_format($stats['duplicates'])],
@@ -589,6 +630,10 @@ final class ImportPhysiciansCommand extends Command {
       $credIdDepartments = [];
       $facilityNames     = [];
       $credIdFacilities  = [];
+      $specialtyNames    = [];
+      $credIdSpecialties = [];
+      $languageNames     = [];
+      $credIdLanguages   = [];
       $problems          = [];
 
       foreach ($this->readRows($handle, $delimiter) as $lineNumber => $row) {
@@ -611,10 +656,69 @@ final class ImportPhysiciansCommand extends Command {
         // distinguish "none" from "provider not seen in pass 1".
         $credIdDepartments[$credId] ??= [];
         $credIdFacilities[$credId]  ??= [];
+        $credIdSpecialties[$credId] ??= [];
+        $credIdLanguages[$credId]   ??= [];
+
+        // ── Specialties ────────────────────────────────────────────────────
+        // Same ';'-nested shape as the department cell ("Internal Medicine;
+        // Pediatrics" is two specialties), so it reuses the same splitter.
+        //
+        // Unlike departments and facilities these do not become their own
+        // entity — they are Terms in the shared taxonomy's 'specialty'
+        // vocabulary. Nothing in this scan needs to know that; it collects
+        // names, and syncTerms() decides what they turn into.
+        foreach ($this->splitList($record['specialty']) as $key => $name) {
+          if (mb_strlen($name) > self::MAX_LENGTH) {
+            $reason = sprintf('specialty name longer than %d characters', self::MAX_LENGTH);
+            $problems[$reason] = ($problems[$reason] ?? 0) + 1;
+            continue;
+          }
+
+          $specialtyNames[$key] ??= $name;
+          $credIdSpecialties[$credId][$key] = true;
+        }
+
+        // ── Languages ──────────────────────────────────────────────────────
+        // COMMA-separated, unlike department and specialty. See splitList().
+        //
+        // Only about a quarter of rows carry any — 2,222 of the 10,933
+        // providers — so an empty cell here is normal, not a data problem.
+        foreach ($this->splitList($record['languages'], self::LANGUAGE_SEPARATOR) as $key => $name) {
+          if (mb_strlen($name) > self::MAX_LENGTH) {
+            $reason = sprintf('language name longer than %d characters', self::MAX_LENGTH);
+            $problems[$reason] = ($problems[$reason] ?? 0) + 1;
+            continue;
+          }
+
+          // The extract contains at least one broken cell —
+          // "English (fluent)Spanish (" — where two values ran together with no
+          // separator. Splitting it yields a value that is not a language and
+          // would sit permanently in the filter dropdown.
+          //
+          // Rejected on shape rather than silently repaired: a language name is
+          // letters, spaces, hyphens and slashes ("Haitian/Creole",
+          // "American Sign Language"). Parentheses and digits mean the cell is
+          // malformed. Counting it as a skipped value means it shows up in the
+          // summary and can be reported back to the export team, which owns the
+          // data — rather than being quietly cleaned here and re-appearing on
+          // every future import.
+          if (preg_match('/[()0-9]/u', $name) === 1) {
+            $reason = 'malformed language value (contains digits or brackets)';
+            $problems[$reason] = ($problems[$reason] ?? 0) + 1;
+
+            if ($io->isVerbose()) {
+              $io->warning(sprintf('Line %d: language value not imported: %s', $lineNumber, $name));
+            }
+            continue;
+          }
+
+          $languageNames[$key] ??= $name;
+          $credIdLanguages[$credId][$key] = true;
+        }
 
         // ── Departments ────────────────────────────────────────────────────
         if (!$skipDepartments) {
-          foreach ($this->splitDepartments($record['department']) as $key => $name) {
+          foreach ($this->splitList($record['department']) as $key => $name) {
             if (mb_strlen($name) > self::MAX_LENGTH) {
               $reason = sprintf('department name longer than %d characters', self::MAX_LENGTH);
               $problems[$reason] = ($problems[$reason] ?? 0) + 1;
@@ -676,6 +780,12 @@ final class ImportPhysiciansCommand extends Command {
     foreach ($credIdFacilities as $credId => $keys) {
       $credIdFacilities[$credId] = array_keys($keys);
     }
+    foreach ($credIdSpecialties as $credId => $keys) {
+      $credIdSpecialties[$credId] = array_keys($keys);
+    }
+    foreach ($credIdLanguages as $credId => $keys) {
+      $credIdLanguages[$credId] = array_keys($keys);
+    }
 
     return [
       'rowCount'          => $rowCount,
@@ -683,6 +793,10 @@ final class ImportPhysiciansCommand extends Command {
       'credIdDepartments' => $credIdDepartments,
       'facilityNames'     => $facilityNames,
       'credIdFacilities'  => $credIdFacilities,
+      'specialtyNames'    => $specialtyNames,
+      'credIdSpecialties' => $credIdSpecialties,
+      'languageNames'     => $languageNames,
+      'credIdLanguages'   => $credIdLanguages,
       'problems'          => $problems,
     ];
   }
@@ -795,6 +909,65 @@ final class ImportPhysiciansCommand extends Command {
   }
 
   /**
+   * Ensures every named term in a vocabulary exists, and returns their IDs.
+   *
+   * The term-backed counterpart to syncNamedEntities(). It cannot simply reuse
+   * that method, because a Term is not identified by name alone — it is
+   * identified by (vocabulary, name), and it needs a Vocabulary to belong to.
+   * That extra dimension is the whole cost of sharing one table across six
+   * taxonomies, and it is confined to this method.
+   *
+   * Terms are created with source='provider-import', so a wrong term can later
+   * be traced to the import that introduced it rather than being quietly fixed
+   * in the admin UI and reappearing on the next run.
+   *
+   * @param array<string, string> $names Normalised key → canonical name.
+   *
+   * @return array{0: array<string, int>, 1: int} Key → term ID, and how many were created.
+   */
+  private function syncTerms(
+    SymfonyStyle $io,
+    array $names,
+    bool $dryRun,
+    PhysicianVocabulary $vocabulary,
+  ): array {
+    $existing = $this->taxonomy->termsByName($vocabulary);
+    $existing = array_map(static fn ($term): int => $term->getId(), $existing);
+
+    $missing = array_diff_key($names, $existing);
+
+    $io->text(sprintf(
+      '%s in the file, %s already in the database, %s to create.',
+      number_format(count($names)),
+      number_format(count(array_intersect_key($names, $existing))),
+      number_format(count($missing)),
+    ));
+
+    if ($dryRun || $missing === []) {
+      return [$existing, count($missing)];
+    }
+
+    foreach ($missing as $name) {
+      $this->taxonomy->createTerm($vocabulary, $name, source: 'provider-import');
+    }
+
+    $this->entityManager->flush();
+    $this->entityManager->clear();
+
+    // clear() detached the Vocabulary the manager was holding; keeping it would
+    // mean persisting the next Term against a detached object. See
+    // PhysicianTaxonomyManager::forget().
+    $this->taxonomy->forget();
+
+    $ids = array_map(
+      static fn ($term): int => $term->getId(),
+      $this->taxonomy->termsByName($vocabulary),
+    );
+
+    return [$ids, count($missing)];
+  }
+
+  /**
    * Reads a name → id map for any entity with a unique `name`.
    *
    * Keyed through normalise() so the lookup agrees with the keys scanFile()
@@ -837,6 +1010,10 @@ final class ImportPhysiciansCommand extends Command {
     array $departmentIds,
     array $credIdFacilities,
     array $facilityIds,
+    array $credIdSpecialties,
+    array $specialtyIds,
+    array $credIdLanguages,
+    array $languageIds,
     int $batchSize,
     ?int $limit,
     bool $dryRun,
@@ -883,6 +1060,36 @@ final class ImportPhysiciansCommand extends Command {
         'class'   => Entity\Facility::class,
         'attach'  => static fn (Entity\Physician $p, object $e): mixed => $p->addFacility($e),
         'detach'  => static fn (Entity\Physician $p, object $e): mixed => $p->removeFacility($e),
+      ],
+      // Specialty is a Term in the shared taxonomy rather than an entity of its
+      // own, but from here it is the same shape as the two above: a set of ids
+      // to diff and attach. That symmetry is the point of describing
+      // associations as data — a taxonomy backed by a completely different
+      // storage model still costs one entry.
+      'specialty' => [
+        // Always synced. There is no --skip-specialties yet because nothing has
+        // needed one; add an option here rather than borrowing another
+        // taxonomy's flag, which would tie two unrelated switches together.
+        'skip'    => false,
+        'ids'     => $specialtyIds,
+        'perCred' => $credIdSpecialties,
+        'links'   => $index['specialtyLinks'],
+        'class'   => HelperEntity\Term::class,
+        'attach'  => static fn (Entity\Physician $p, object $e): mixed => $p->addTerm($e),
+        'detach'  => static fn (Entity\Physician $p, object $e): mixed => $p->removeTerm($e),
+      ],
+      // Language: a second vocabulary in the same shared taxonomy. Note it
+      // attaches and detaches through exactly the same Term methods as
+      // specialty — what keeps the two apart is the vocabulary-scoped link set
+      // below, NOT anything on the entity.
+      'language' => [
+        'skip'    => false,
+        'ids'     => $languageIds,
+        'perCred' => $credIdLanguages,
+        'links'   => $index['languageLinks'],
+        'class'   => HelperEntity\Term::class,
+        'attach'  => static fn (Entity\Physician $p, object $e): mixed => $p->addTerm($e),
+        'detach'  => static fn (Entity\Physician $p, object $e): mixed => $p->removeTerm($e),
       ],
     ];
 
@@ -1299,7 +1506,7 @@ final class ImportPhysiciansCommand extends Command {
   }
 
   /**
-   * Splits a department cell into its individual departments.
+   * Splits a multi-value cell into its individual values.
    *
    * "Hospital Medicine; Medicine" → ['hospital medicine' => 'Hospital Medicine',
    *                                  'medicine'          => 'Medicine']
@@ -1308,15 +1515,32 @@ final class ImportPhysiciansCommand extends Command {
    * identically; a second, subtly different normalisation elsewhere is exactly
    * how "Cardiology" and "cardiology" end up as two rows under a UNIQUE index.
    *
+   * ── Why the separator is a PARAMETER and not a constant ──────────────────
+   * Because this one file uses three different conventions, and getting them
+   * confused corrupts data silently:
+   *
+   *   |  between fields
+   *   ;  inside `department` and `specialty`
+   *   ,  inside `languages`  ("Albanian, Italian, Spanish")
+   *
+   * The comma is the dangerous one. It CANNOT be applied globally: the
+   * facility "Mount Auburn Cambridge, IPA" contains a real comma, and splitting
+   * on it would invent a facility called "IPA". Which delimiter applies is a
+   * property of the column, so the caller states it rather than this method
+   * assuming.
+   *
+   * @param string $cell      The raw cell.
+   * @param string $separator The delimiter WITHIN this particular column.
+   *
    * @return array<string, string> Normalised lookup key → display name.
    */
-  private function splitDepartments(string $cell): array {
+  private function splitList(string $cell, string $separator = self::DEPARTMENT_SEPARATOR): array {
     if ($cell === '') {
       return [];
     }
 
     $departments = [];
-    foreach (explode(self::DEPARTMENT_SEPARATOR, $cell) as $name) {
+    foreach (explode($separator, $cell) as $name) {
       // Collapse internal whitespace as well as trimming the ends, so
       // "Medicine ;  Neurology" and "Medicine;Neurology" agree.
       $name = trim((string) preg_replace('/\s+/u', ' ', $name));
@@ -1457,6 +1681,23 @@ final class ImportPhysiciansCommand extends Command {
       'adoptable'       => $adoptable,
       'departmentLinks' => $this->loadExistingLinks('physician_departments', 'department_id'),
       'facilityLinks'   => $this->loadExistingLinks('physician_facilities', 'facility_id'),
+      // Scoped to ONE vocabulary. physician_terms holds every taxonomy at once,
+      // so an unscoped read would hand the specialty diff every language and
+      // condition link too — and the sync, seeing them absent from the file's
+      // specialty list, would delete them.
+      'specialtyLinks'  => $this->loadExistingLinks(
+        'physician_terms',
+        'term_id',
+        PhysicianVocabulary::Specialty,
+      ),
+      // Separately scoped from specialtyLinks even though both read the same
+      // table. Sharing one unscoped read would let each vocabulary's sync see
+      // the other's links as "current" and delete them.
+      'languageLinks'   => $this->loadExistingLinks(
+        'physician_terms',
+        'term_id',
+        PhysicianVocabulary::Language,
+      ),
     ];
   }
 
@@ -1490,9 +1731,31 @@ final class ImportPhysiciansCommand extends Command {
    *
    * @return array<int, array<int, true>> physician id → set of related ids.
    */
-  private function loadExistingLinks(string $table, string $column): array {
+  private function loadExistingLinks(
+    string $table,
+    string $column,
+    ?PhysicianVocabulary $vocabulary = null,
+  ): array {
+    $sql    = sprintf('SELECT l.physician_id, l.%s FROM %s l', $column, $table);
+    $params = [];
+
+    // Shared-taxonomy links need narrowing to one vocabulary, because
+    // physician_terms holds all of them in one table. Without this, the
+    // specialty sync would receive every language and condition link as
+    // "current", find them missing from the file's specialty list, and delete
+    // them — one taxonomy silently wiping another.
+    if ($vocabulary !== null) {
+      $sql .= sprintf(
+        ' JOIN vocabulary_terms t ON t.id = l.%s
+          JOIN vocabularies v ON v.id = t.vocabulary_id
+         WHERE v.name = :vocabulary',
+        $column,
+      );
+      $params['vocabulary'] = $vocabulary->value;
+    }
+
     $rows = $this->entityManager->getConnection()
-      ->executeQuery(sprintf('SELECT physician_id, %s FROM %s', $column, $table))
+      ->executeQuery($sql, $params)
       ->fetchAllAssociative();
 
     $links = [];

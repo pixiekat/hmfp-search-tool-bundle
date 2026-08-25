@@ -5,6 +5,7 @@ namespace Pixiekat\HMFPSearchToolBundle\Entity;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
+use Pixiekat\SymfonyHelpers\Entity as HelperEntity;
 use Pixiekat\HMFPSearchToolBundle\Interfaces as HMFPSearchToolInterfaces;
 use Pixiekat\SymfonyHelpers\Traits\Entity as PixieTraits;
 
@@ -94,12 +95,68 @@ class Physician  {
   #[ORM\InverseJoinColumn(name: 'facility_id', referencedColumnName: 'id', onDelete: 'CASCADE')]
   private Collection $facilities;
 
+  /**
+   * Taxonomy terms attached to this physician — specialties, languages, and so on.
+   *
+   * Note: One relationship for every taxonomy, rather than a Specialty entity, a
+   * Language entity, a Condition entity and a join table apiece. All of them are
+   * Terms in the helpers bundle's shared taxonomy, distinguished by which Vocabulary
+   * they belong to. Which vocabularies exist, and what they mean, is HMFP's business
+   * and lives in Enum\PhysicianVocabulary.
+   *
+   * @var Collection<int, HelperEntity\Term>
+   */
+  #[ORM\ManyToMany(targetEntity: HelperEntity\Term::class)]
+  #[ORM\JoinTable(name: 'physician_terms')]
+  #[ORM\JoinColumn(name: 'physician_id', referencedColumnName: 'id', onDelete: 'CASCADE')]
+  #[ORM\InverseJoinColumn(name: 'term_id', referencedColumnName: 'id', onDelete: 'CASCADE')]
+  private Collection $terms;
+
   use PixieTraits\EntityUpdatedAtTrait;
 
   public function __construct() {
     $this->setUpdatedAt(new \DateTimeImmutable());
     $this->departments = new ArrayCollection();
     $this->facilities = new ArrayCollection();
+    $this->terms = new ArrayCollection();
+  }
+
+  /**
+   * All taxonomy terms attached to this physician, across every vocabulary.
+   *
+   * Usually you want them filtered by vocabulary — see
+   * PhysicianTaxonomyManager::termsFor(), which is where the vocabulary-aware
+   * reads live so that this entity stays a plain container.
+   *
+   * @return Collection<int, HelperEntity\Term>
+   */
+  public function getTerms(): Collection {
+    return $this->terms;
+  }
+
+  /**
+   * Attaches a term, whichever vocabulary it belongs to.
+   *
+   * The contains() guard makes this idempotent, exactly as for departments and
+   * facilities: physician_terms has a composite primary key, so adding the same
+   * term twice would fail at flush time, far from the line that caused it.
+   *
+   * Deliberately does NOT validate the term's vocabulary. This entity has no
+   * business knowing which vocabularies are meaningful — that belongs to
+   * Enum\PhysicianVocabulary and the manager that reads it.
+   */
+  public function addTerm(HelperEntity\Term $term): self {
+    if (!$this->terms->contains($term)) {
+      $this->terms->add($term);
+    }
+
+    return $this;
+  }
+
+  public function removeTerm(HelperEntity\Term $term): self {
+    $this->terms->removeElement($term);
+
+    return $this;
   }
 
   public function getBio(): ?string {
