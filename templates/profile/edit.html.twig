@@ -1,0 +1,144 @@
+{#
+  Editing a physician's profile.
+
+  Changes publish IMMEDIATELY and are flagged for review afterwards. The page
+  says so before the submit button rather than after, because someone editing a
+  colleague's record should know it goes live at once — assuming a moderator
+  will catch a mistake first would be a costly misunderstanding.
+#}
+{% extends '@HMFPSearchTool/search/layout.html.twig' %}
+
+{% block search_page_title %}Edit {{ physician.legalName }}{% endblock %}
+
+{% block content %}
+  <h1>Edit profile</h1>
+  <p class="muted">
+    {{ physician.legalName }}{% if physician.credentials is not empty %}, {{ physician.credentials }}{% endif %}
+  </p>
+
+  {#
+    Flashes are a live region so a screen reader announces the outcome without
+    the user having to go looking for it. role="status" is polite — it waits for
+    a pause rather than interrupting.
+  #}
+  {% for label, messages in app.flashes(['success', 'error', 'notice']) %}
+    {% for message in messages %}
+      <p class="flash flash--{{ label }}" role="status">{{ message }}</p>
+    {% endfor %}
+  {% endfor %}
+
+  {#
+    "Last updated by" — required by the spec, and the thing that makes
+    publish-first acceptable: anyone looking at this record can see at a glance
+    that a human changed it, who, and when.
+  #}
+  {% if awaitingReview is not empty %}
+    {% set newest = awaitingReview|first %}
+    <section class="pending-edits" aria-labelledby="pending-heading">
+      <h2 id="pending-heading">Live, awaiting review</h2>
+      <p>
+        Last updated by <strong>{{ newest.editedByLabel }}</strong>
+        on {{ newest.editedAt|date('j M Y, H:i') }}.
+      </p>
+      <p>
+        {{ awaitingReview|length }} recent change{{ awaitingReview|length == 1 ? '' : 's' }}
+        {{ awaitingReview|length == 1 ? 'is' : 'are' }} published and waiting for an
+        administrator to check {{ awaitingReview|length == 1 ? 'it' : 'them' }}. The fields
+        below already show {{ awaitingReview|length == 1 ? 'it' : 'them' }}.
+      </p>
+      <ul>
+        {% for edit in awaitingReview %}
+          <li>
+            <strong>{{ edit.fieldName.label }}</strong>
+            — {{ edit.editedByLabel }}, {{ edit.editedAt|date('j M Y, H:i') }}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  <form method="post" action="{{ path('hmfp_search_tool_profile_submit', {'id': physician.id}) }}" class="profile-form">
+    <input type="hidden" name="_token" value="{{ csrf_token('edit-profile-' ~ physician.id) }}">
+
+    <div class="field">
+      <label for="bio">Biography</label>
+      <textarea id="bio" name="bio" rows="8" aria-describedby="bio-hint">{{ bio }}</textarea>
+      <p id="bio-hint" class="hint">
+        Shown on the public profile. Leave empty to remove it.
+      </p>
+    </div>
+
+    <div class="field">
+      <label for="interests">Clinical interests</label>
+      {#
+        One per LINE, not comma-separated: clinical interests contain commas
+        ("Cardiology, non-invasive"), and asking someone to escape one in a text
+        box is asking them to get it wrong.
+      #}
+      <textarea id="interests" name="interests" rows="8" aria-describedby="interests-hint">{{ interests }}</textarea>
+      <p id="interests-hint" class="hint">
+        One per line. These are used to match this provider to patient searches,
+        so be specific — “Heart failure” finds more of the right people than
+        “Cardiology”.
+      </p>
+    </div>
+
+    <div class="field">
+      <button type="submit">Save changes</button>
+      <p class="hint">
+        Changes go live straight away and are flagged for an administrator to
+        review. Every change records who made it, and can be reverted.
+      </p>
+    </div>
+  </form>
+
+  {#
+    Fields nobody can change here. Listed rather than omitted, because
+    "why can't I fix my department?" is a support question worth answering on
+    the page — and it makes clear these come from elsewhere rather than being
+    forgotten.
+  #}
+  <section aria-labelledby="readonly-heading">
+    <h2 id="readonly-heading">Managed by the hospital</h2>
+    <p class="muted">
+      These come from the credentialing record and cannot be edited here. Contact
+      the credentialing team if something is wrong.
+    </p>
+    <dl class="readonly-fields">
+      <dt>Name</dt>
+      <dd>{{ physician.legalName }}</dd>
+
+      <dt>Credentials</dt>
+      <dd>{{ physician.credentials|default('—') }}</dd>
+
+      <dt>Department{{ physician.departments|length == 1 ? '' : 's' }}</dt>
+      <dd>
+        {%- if physician.departments|length -%}
+          {{ physician.departments|map(d => d.name)|join(', ') }}
+        {%- else -%}—{%- endif -%}
+      </dd>
+
+      <dt>{{ physician.facilities|length == 1 ? 'Facility' : 'Facilities' }}</dt>
+      <dd>
+        {%- if physician.facilities|length -%}
+          {{ physician.facilities|map(f => f.name)|join(', ') }}
+        {%- else -%}—{%- endif -%}
+      </dd>
+    </dl>
+  </section>
+
+  {% if recent is not empty %}
+    <section aria-labelledby="recent-heading">
+      <h2 id="recent-heading">Reviewed changes</h2>
+      <ul>
+        {% for edit in recent %}
+          <li>
+            <strong>{{ edit.fieldName.label }}</strong>
+            by {{ edit.editedByLabel }} — {{ edit.reviewStatus.label }}
+            {%- if edit.reviewedAt %}, reviewed {{ edit.reviewedAt|date('j M Y') }}{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+{% endblock %}

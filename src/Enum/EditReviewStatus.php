@@ -3,55 +3,84 @@ declare(strict_types=1);
 namespace Pixiekat\HMFPSearchToolBundle\Enum;
 
 /**
- * Where a proposed edit sits in review.
+ * Where an edit sits in review — AFTER it has already gone live.
  *
- * ── Only one status makes an edit visible ──────────────────────────────────
- * `Live` is the sole status the resolver looks at. Everything else — pending,
- * rejected, superseded — is history. That single rule is what keeps the read
- * path cheap and unambiguous: "latest Live edit, else the imported value",
- * with no precedence table to reason about.
+ * ── Publish first, review after ────────────────────────────────────────────
+ * An edit is visible the moment it is made. Review is a check on something
+ * already published, not a gate in front of it. That is a deliberate product
+ * decision: a physician correcting their own clinical interests should not wait
+ * on an administrator, and the review queue exists to catch the rare abuse
+ * rather than to approve the common case.
+ *
+ * It also means REJECTING is a revert, not a refusal — the change was live and
+ * has to be taken back down.
+ *
+ * ── The resolution rule ────────────────────────────────────────────────────
+ *     latest edit for this field that is NOT rejected
+ *
+ * That one rule gives correct revert behaviour for free. Reject the third edit
+ * and the second becomes current again automatically, because it is now the
+ * latest non-rejected one. No bookkeeping status has to be maintained, and
+ * nothing has to be un-marked — which is why there is no "superseded" case
+ * here: being superseded just means not being the latest, which the query
+ * already knows.
  */
 enum EditReviewStatus: string {
 
   /**
-   * Proposed, awaiting an administrator. Invisible to the public.
+   * Live, and nobody has checked it yet. The status every edit starts in.
    */
-  case Pending = 'pending';
+  case Unreviewed = 'unreviewed';
 
   /**
-   * Approved and overriding the imported value.
+   * Live, and an administrator has confirmed it.
+   *
+   * Changes nothing about what the public sees — the edit was already
+   * published. It clears the item from the review queue and records who
+   * vouched for it.
    */
-  case Live = 'live';
+  case Approved = 'approved';
 
   /**
-   * Reviewed and refused. Kept rather than deleted, because "we asked and were
-   * told no" is exactly the thing someone will want to look up later — and
-   * deleting it invites the same edit being proposed again next month.
+   * Taken back down.
+   *
+   * The row is kept, not deleted: "this was published and then reverted, by
+   * whom and when" is exactly what an audit trail is for, and deleting it would
+   * hide that the content was ever live.
    */
   case Rejected = 'rejected';
 
-  /**
-   * Replaced by a newer Live edit on the same field.
-   *
-   * Strictly redundant — "latest Live wins" already ignores older ones — but
-   * setting it explicitly means the review queue and the history view do not
-   * each have to re-derive which of several Live edits is the current one.
-   */
-  case Superseded = 'superseded';
-
   public function label(): string {
     return match ($this) {
-      self::Pending    => 'Awaiting review',
-      self::Live       => 'Live',
-      self::Rejected   => 'Rejected',
-      self::Superseded => 'Superseded',
+      self::Unreviewed => 'Live — not yet reviewed',
+      self::Approved   => 'Live — approved',
+      self::Rejected   => 'Reverted',
     };
   }
 
   /**
-   * Whether an edit in this status is still awaiting a decision.
+   * Whether an edit in this status counts when resolving the current value.
+   *
+   * Both live statuses do. Only a rejection removes an edit from consideration,
+   * which is what makes rejection a revert.
    */
-  public function isOpen(): bool {
-    return $this === self::Pending;
+  public function isPublished(): bool {
+    return $this !== self::Rejected;
+  }
+
+  /**
+   * Whether this edit still needs an administrator to look at it.
+   */
+  public function isAwaitingReview(): bool {
+    return $this === self::Unreviewed;
+  }
+
+  /**
+   * The statuses that count as published, for use in queries.
+   *
+   * @return list<string>
+   */
+  public static function publishedValues(): array {
+    return [self::Unreviewed->value, self::Approved->value];
   }
 }

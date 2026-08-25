@@ -14,7 +14,7 @@ use Pixiekat\SymfonyHelpers\Traits\Entity as PixieTraits;
  * The imported record is never modified. Edits accumulate here instead, and a
  * read resolves as:
  *
- *     resolved(field) = newValue of the latest LIVE edit for that field
+ *     resolved(field) = newValue of the latest NON-REJECTED edit for that field
  *                       ?? the imported value on Physician
  *
  * Three properties fall out of that, all of which are the point:
@@ -26,22 +26,32 @@ use Pixiekat\SymfonyHelpers\Traits\Entity as PixieTraits;
  *   · The history is free. Every proposal ever made is still here, with who
  *     made it and who decided.
  *
+ * ── Edits publish immediately ──────────────────────────────────────────────
+ * A new edit is Unreviewed, which is a LIVE status: it is visible at once, and
+ * review is a check on something already published. Rejecting is therefore a
+ * revert. See EditReviewStatus.
+ *
  * ── Append-only means the VALUE is immutable ───────────────────────────────
  * There is deliberately no setter for $newValue. Changing your mind produces a
- * NEW edit; the old one becomes Superseded. Editing an edit in place would
- * destroy the audit trail this table exists to keep, and would make "what did
- * the reviewer actually approve?" unanswerable.
+ * NEW edit, which becomes the latest and therefore the current one; the older
+ * edit stays exactly as it was. Editing an edit in place would destroy the
+ * audit trail this table exists to keep, and would make "what was actually
+ * published at the time?" unanswerable.
  *
  * Status is the one mutable part, because a review is by definition a later
  * decision about an existing proposal.
  *
- * ── Why editedBy is a string and reviewedBy is a relation ──────────────────
- * They are different populations. A reviewer is an administrator of THIS
- * application, so it can be a real foreign key. An editor is a physician, who
- * in the target architecture authenticates through the hospital's own identity
- * system and may have no row in this database at all. Storing an opaque
- * identifier keeps that door open; forcing a FK would require mirroring every
- * physician into the users table before they could touch their own profile.
+ * ── Both parties are real accounts, and both keep a label ──────────────────
+ * Editors and reviewers are the same population: rows in `users`, signing in
+ * with a password today and through Azure OAuth later. So both are foreign
+ * keys.
+ *
+ * Each is paired with a snapshot label, mirroring the audit log's
+ * actor/actorLabel. The key answers "who is this, now?"; the label answers "who
+ * was this, then?" — and a review history has to answer the second even after
+ * an account is deleted or an address changes. It also leaves room for an
+ * author with no local account at all, which is what an edit pushed from
+ * upstream would be.
  */
 #[ORM\Entity(repositoryClass: \Pixiekat\HMFPSearchToolBundle\Repository\PhysicianEditRepository::class)]
 #[ORM\Table(name: 'physician_edits')]
@@ -110,16 +120,35 @@ class PhysicianEdit {
   private ?string $newValue;
 
   /**
-   * Opaque identifier of whoever proposed this — see the class docblock.
+   * The account that proposed this edit.
+   *
+   * SET NULL on delete, for the same reason as $reviewedBy: if the account is
+   * later removed the proposal still happened, and the history must survive it.
+   * $editedByLabel keeps the record readable when that occurs.
    */
-  #[ORM\Column(name: 'edited_by', type: 'string', length: 255)]
-  private string $editedBy;
+  #[ORM\ManyToOne(targetEntity: User::class)]
+  #[ORM\JoinColumn(name: 'edited_by', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+  private ?User $editedBy = null;
+
+  /**
+   * Who proposed it, as they were named at the time. Never null.
+   *
+   * The same actor/actorLabel pairing the audit log uses, and for the same
+   * reason: a foreign key answers "who is this, now?" while a snapshot answers
+   * "who was this, then?" — and a review history needs the second question
+   * answered even after an account is deleted or an address changes.
+   *
+   * Also covers the non-user case that will exist eventually: an edit arriving
+   * from an upstream push has an author but no login here.
+   */
+  #[ORM\Column(name: 'edited_by_label', type: 'string', length: 255)]
+  private string $editedByLabel;
 
   #[ORM\Column(name: 'edited_at', type: 'datetime_immutable')]
   private \DateTimeImmutable $editedAt;
 
   #[ORM\Column(name: 'review_status', type: 'string', length: 32, enumType: EditReviewStatus::class)]
-  private EditReviewStatus $reviewStatus = EditReviewStatus::Pending;
+  private EditReviewStatus $reviewStatus = EditReviewStatus::Unreviewed;
 
   /**
    * The administrator who decided. Null while pending.
@@ -143,18 +172,36 @@ class PhysicianEdit {
   #[ORM\Column(name: 'reviewed_at', type: 'datetime_immutable', nullable: true)]
   private ?\DateTimeImmutable $reviewedAt = null;
 
+  /**
+   * @param User|null $editedBy      The proposing account, if there is one.
+   * @param string|null $editedByLabel Overrides the label; defaults to the
+   *   user's identifier. Required when $editedBy is null.
+   */
   public function __construct(
     Physician $physician,
     EditableField $fieldName,
     ?string $newValue,
-    string $editedBy,
+    ?User $editedBy,
+    ?string $editedByLabel = null,
     ?\DateTimeImmutable $editedAt = null,
   ) {
-    $this->physician  = $physician;
-    $this->fieldName  = $fieldName;
-    $this->newValue   = $newValue;
-    $this->editedBy   = $editedBy;
-    $this->editedAt   = $editedAt ?? new \DateTimeImmutable();
+    $label = $editedByLabel ?? $editedBy?->getUserIdentifier();
+
+    if ($label === null || trim($label) === '') {
+      // Refused rather than defaulted, because an anonymous entry in a review
+      // history is worse than no entry: it looks like a record while answering
+      // none of the questions the record exists for.
+      throw new \InvalidArgumentException(
+        'A physician edit must name its author: pass a User, or an explicit label.'
+      );
+    }
+
+    $this->physician      = $physician;
+    $this->fieldName      = $fieldName;
+    $this->newValue       = $newValue;
+    $this->editedBy       = $editedBy;
+    $this->editedByLabel  = $label;
+    $this->editedAt       = $editedAt ?? new \DateTimeImmutable();
   }
 
   public function getPhysician(): Physician {
@@ -169,8 +216,12 @@ class PhysicianEdit {
     return $this->newValue;
   }
 
-  public function getEditedBy(): string {
+  public function getEditedBy(): ?User {
     return $this->editedBy;
+  }
+
+  public function getEditedByLabel(): string {
+    return $this->editedByLabel;
   }
 
   public function getEditedAt(): \DateTimeImmutable {

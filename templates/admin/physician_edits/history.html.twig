@@ -1,0 +1,82 @@
+{#
+  Every edit ever proposed for one physician, newest first.
+
+  This is the payoff from the table being append-only: rejected and superseded
+  rows are kept, so the record answers "was this ever asked for, and what was
+  decided?" — which is the question that actually gets asked months later.
+#}
+{% extends '@HMFPSearchTool/admin/layout.html.twig' %}
+{% block admin_page_title %}Edit history — {{ physician.legalName }}{% endblock %}
+
+{% block content %}
+  <div class="actions">
+    <a href="{{ path('hmfp_search_tool_admin_physician_edits') }}">← Back to review queue</a>
+  </div>
+
+  {% if edits is empty %}
+    <p>No edits have ever been proposed for {{ physician.legalName }}.</p>
+  {% else %}
+    <div class="table-wrap">
+      <table>
+        <caption>{{ edits|length }} edit{{ edits|length == 1 ? '' : 's' }} for {{ physician.legalName }}, newest first</caption>
+        <thead>
+          <tr>
+            <th scope="col">Proposed</th>
+            <th scope="col">Field</th>
+            <th scope="col">Value</th>
+            <th scope="col">Status</th>
+            <th scope="col">Reviewed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for edit in edits %}
+            <tr>
+              <th scope="row">
+                {{ edit.editedAt|date('j M Y, H:i') }}<br>
+                <span class="muted">{{ edit.editedByLabel }}</span>
+              </th>
+
+              <td>{{ edit.fieldName.label }}</td>
+
+              <td>
+                {% if edit.newValue is empty %}
+                  <em class="muted">empty — clears the field</em>
+                {% else %}
+                  {{ edit.newValue }}
+                {% endif %}
+              </td>
+
+              <td>
+                {#
+                  The WORD carries the meaning. Any colour added later is a
+                  redundant cue, never the only one — green/red is exactly the
+                  pairing that collapses under deuteranopia.
+                #}
+                <span class="badge">{{ edit.reviewStatus.label }}</span>
+              </td>
+
+              <td>
+                {% if edit.reviewedAt %}
+                  {{ edit.reviewedAt|date('j M Y, H:i') }}<br>
+                  <span class="muted">
+                    {%- if edit.reviewedBy %}
+                      {{ edit.reviewedBy.displayName }}
+                    {%- else %}
+                      {# The reviewer's account was removed, or the row was
+                         superseded automatically rather than by a person. The
+                         decision still stands — see the SET NULL note on the
+                         entity. #}
+                      account removed
+                    {%- endif %}
+                  </span>
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+{% endblock %}

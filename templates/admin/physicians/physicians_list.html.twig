@@ -37,6 +37,9 @@
               {% endfor %}
             </td>
             <td>
+              <a href="{{ path('hmfp_search_tool_admin_physician_edit_history', {'id': physician.id}) }}" class="button button--secondary">
+                View Edit History<span class="visually-hidden"> for {{ physician.getLegalName }}</span>
+              </a>
               {# Accessible names say WHICH department — a column of identical "Edit"
                  and "Delete" controls is unusable in a screen reader's list. #}
               <a href="{{ path('hmfp_search_tool_admin_physician_edit', {'id': physician.id}) }}" class="button button--secondary">

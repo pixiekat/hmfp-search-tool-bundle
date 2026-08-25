@@ -22,3 +22,5 @@ audit:
         facility.updated: '%actor% updated the facility %target%'
         facility.deleted: '%actor% deleted the facility %target%'
         search.accessed: '%actor% accessed the search tool'
+        physician_edit.published: '%actor% proposed an edit for physician'
+        physician_edit.rejected: '%actor% rejected the proposed physician edit'

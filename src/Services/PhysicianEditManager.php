@@ -59,7 +59,8 @@ final class PhysicianEditManager {
     Entity\Physician $physician,
     EditableField $field,
     array $names,
-    string $editedBy,
+    ?Entity\User $editedBy,
+    ?string $editedByLabel = null,
   ): Entity\PhysicianEdit {
     if (!$field->isTaxonomy()) {
       throw new \InvalidArgumentException(sprintf(
@@ -97,6 +98,7 @@ final class PhysicianEditManager {
       $field,
       json_encode($clean, \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR),
       $editedBy,
+      $editedByLabel,
     );
   }
 
@@ -113,61 +115,61 @@ final class PhysicianEditManager {
     Entity\Physician $physician,
     EditableField $field,
     ?string $newValue,
-    string $editedBy,
+    ?Entity\User $editedBy,
+    ?string $editedByLabel = null,
   ): Entity\PhysicianEdit {
-    $edit = new Entity\PhysicianEdit($physician, $field, $newValue, $editedBy);
+    $edit = new Entity\PhysicianEdit($physician, $field, $newValue, $editedBy, $editedByLabel);
 
     $this->entityManager->persist($edit);
+
+    // Live at once. The edit's default status is Unreviewed, which IS published
+    // — review happens afterwards — so a taxonomy field has to be projected
+    // here rather than waiting for an approval that may never come.
+    //
+    // Projected from the value in hand, not by re-reading the log: the edit has
+    // not been flushed, so a query would not see it.
+    if ($field->isTaxonomy()) {
+      $this->applyProjection($physician, $field, $newValue);
+    }
+
+    $this->auditLogManager->log('physician_edit.published', $edit, [
+      'physicianId' => $physician->getId(),
+      'field'       => $field->value,
+      'editedBy'    => $edit->getEditedByLabel(),
+    ], flush: false);
 
     return $edit;
   }
 
   /**
-   * Approves an edit, superseding whatever it replaces.
+   * Confirms an edit that is already live.
    *
-   * Order matters: older Live edits are marked Superseded BEFORE this one goes
-   * Live, so there is no instant at which two edits for the same field are both
-   * Live. (The resolver tolerates that state anyway — it takes the most recent —
-   * but a workflow that produces impossible states even briefly is one whose
-   * history cannot be trusted.)
+   * ── Confirming changes nothing the public can see ─────────────────────────
+   * The edit has been published since the moment it was made. There is no value
+   * to apply and nothing to project; this records that a human has now looked
+   * at it, which is what clears it from the review queue.
+   *
+   * Nor is there any superseding to do. The resolver takes the latest
+   * non-rejected edit, so an older edit stops being current simply by no longer
+   * being the latest — no status has to be maintained to say so, and none has
+   * to be un-set if this one is later rejected.
    *
    * Does not flush; the caller decides the transaction boundary.
    */
-  public function approve(Entity\PhysicianEdit $edit, Entity\User $reviewer): void {
-    foreach ($this->edits->findLiveFor($edit->getPhysician(), $edit->getFieldName()) as $previous) {
-      if ($previous !== $edit) {
-        $previous->review(EditReviewStatus::Superseded, null);
-      }
-    }
+  public function confirm(Entity\PhysicianEdit $edit, Entity\User $reviewer): void {
+    $edit->review(EditReviewStatus::Approved, $reviewer);
 
-    $edit->review(EditReviewStatus::Live, $reviewer);
-
-    // Re-project immediately, in the SAME unit of work as the approval. If the
-    // two were separate transactions there would be a window in which an edit
-    // is live but the search index does not reflect it — and a projection that
-    // can be forgotten is a projection that will be.
-    if ($edit->getFieldName()->isTaxonomy()) {
-      // Projected from THIS edit's value, not by re-reading the log.
-      //
-      // A DQL query does not see unflushed changes: the status set on the line
-      // above exists only in memory, so a query at this point would still find
-      // the edit Pending and project an EMPTY set — leaving the read model one
-      // approval behind for ever. Passing the value we already hold sidesteps
-      // the question entirely and avoids a needless query.
-      $this->applyProjection($edit->getPhysician(), $edit->getFieldName(), $edit->getNewValue());
-    }
-
-    // Approving an edit is exactly the sort of thing the DATABASE audit sink is
+    // Confirming an edit is exactly the sort of thing the DATABASE audit sink is
     // for — low volume, and precisely what someone will need to look up later
     // ("who let this bio through?"). Contrast with search, which goes to the log
     // channel because it is high volume and individually uninteresting.
     //
     // flush: false so this row joins the caller's transaction rather than
     // committing a half-finished unit of work.
-    $this->auditLogManager->log('physician_edit.approved', $edit, [
+    $this->auditLogManager->log('physician_edit.confirmed', $edit, [
       'physicianId' => $edit->getPhysician()->getId(),
       'field'       => $edit->getFieldName()->value,
-      'editedBy'    => $edit->getEditedBy(),
+      'editedBy'    => $edit->getEditedByLabel(),
     ], flush: false);
   }
 
@@ -177,31 +179,53 @@ final class PhysicianEditManager {
   public function reject(Entity\PhysicianEdit $edit, Entity\User $reviewer): void {
     $edit->review(EditReviewStatus::Rejected, $reviewer);
 
+    $field     = $edit->getFieldName();
+    $physician = $edit->getPhysician();
+
+    // Rejecting is a REVERT, because the edit was already published. The value
+    // to fall back to is the previous non-rejected edit — not the imported one,
+    // unless there is no earlier edit at all.
+    //
+    // The rejected edit is filtered out in PHP rather than excluded by the
+    // query, because the status set above has not been flushed and the database
+    // still reports it as published.
+    if ($field->isTaxonomy()) {
+      $remaining = array_values(array_filter(
+        $this->edits->findPublishedFor($physician, $field),
+        static fn (Entity\PhysicianEdit $e): bool => $e !== $edit,
+      ));
+
+      $previous = $remaining === [] ? null : end($remaining);
+
+      $this->applyProjection($physician, $field, $previous?->getNewValue());
+    }
+
     $this->auditLogManager->log('physician_edit.rejected', $edit, [
       'physicianId' => $edit->getPhysician()->getId(),
       'field'       => $edit->getFieldName()->value,
-      'editedBy'    => $edit->getEditedBy(),
+      'editedBy'    => $edit->getEditedByLabel(),
     ], flush: false);
   }
 
   /**
-   * Reverts to the imported value by superseding every live edit for a field.
+   * Discards ALL edits for a field, falling back to the imported value.
    *
-   * Nothing is deleted, so the history still shows what was overridden and for
-   * how long — and re-approving the old edit puts it back.
+   * The blunt instrument, distinct from rejecting one edit: rejecting the
+   * latest reverts to the one before it, whereas this rejects every one and
+   * goes all the way back to what the import supplied.
+   *
+   * Nothing is deleted, so the history still shows what was published and for
+   * how long.
    */
   public function revert(Entity\Physician $physician, EditableField $field, Entity\User $reviewer): void {
-    foreach ($this->edits->findLiveFor($physician, $field) as $live) {
-      $live->review(EditReviewStatus::Superseded, $reviewer);
+    foreach ($this->edits->findPublishedFor($physician, $field) as $published) {
+      $published->review(EditReviewStatus::Rejected, $reviewer);
     }
 
-    // With no live edit left, the projection recomputes to an empty set and the
-    // links are removed. Nothing is deleted from the log — re-approving the old
-    // edit puts everything back.
     if ($field->isTaxonomy()) {
-      // Every live edit was just superseded, so the desired set is provably
-      // empty — no need to ask the database, which for the same
-      // unflushed-changes reason would still say otherwise.
+      // Every edit was just rejected, so the desired set is provably empty — no
+      // need to ask the database, which would not see the unflushed statuses
+      // anyway and would still report them as published.
       $this->applyProjection($physician, $field, null);
     }
 

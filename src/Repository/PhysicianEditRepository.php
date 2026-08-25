@@ -34,13 +34,12 @@ class PhysicianEditRepository extends ServiceEntityRepository {
    * one.
    *
    * ── Why the ordering matters ──────────────────────────────────────────────
-   * Several Live edits may exist for the same field: superseding is bookkeeping
-   * the manager does, and a failed run, a restored backup, or a direct database
-   * edit can leave more than one behind. Ordering oldest-first and letting later
-   * rows overwrite earlier ones in the map means the NEWEST always wins,
-   * whatever the table looks like. The resolver therefore cannot be broken by
-   * inconsistent status data — it degrades to "most recent wins", which is the
-   * intended rule anyway.
+   * Every non-rejected edit for a field is returned, not just the newest, and
+   * ordering oldest-first lets later rows overwrite earlier ones in the map so
+   * the NEWEST wins. That is the whole resolution rule, and doing it this way
+   * is what makes rejection a revert for free: reject the newest and the one
+   * before it is simply the latest non-rejected edit next time round, with no
+   * status anywhere needing to be un-set.
    *
    * @param list<int> $physicianIds
    *
@@ -54,9 +53,9 @@ class PhysicianEditRepository extends ServiceEntityRepository {
     $rows = $this->createQueryBuilder('e')
       ->select('IDENTITY(e.physician) AS physicianId', 'e.fieldName AS fieldName', 'e.newValue AS newValue')
       ->where('e.physician IN (:ids)')
-      ->andWhere('e.reviewStatus = :live')
+      ->andWhere('e.reviewStatus IN (:published)')
       ->setParameter('ids', $physicianIds)
-      ->setParameter('live', EditReviewStatus::Live->value)
+      ->setParameter('published', EditReviewStatus::publishedValues())
       ->orderBy('e.editedAt', 'ASC')
       ->addOrderBy('e.id', 'ASC')
       ->getQuery()
@@ -72,21 +71,18 @@ class PhysicianEditRepository extends ServiceEntityRepository {
   }
 
   /**
-   * Live edits for one physician and field, oldest first.
-   *
-   * Used when a new edit goes live and the previous ones must be marked
-   * Superseded.
+   * Published edits for one physician and field, oldest first.
    *
    * @return Entity\PhysicianEdit[]
    */
-  public function findLiveFor(Entity\Physician $physician, EditableField $field): array {
+  public function findPublishedFor(Entity\Physician $physician, EditableField $field): array {
     return $this->createQueryBuilder('e')
       ->where('e.physician = :physician')
       ->andWhere('e.fieldName = :field')
-      ->andWhere('e.reviewStatus = :live')
+      ->andWhere('e.reviewStatus IN (:published)')
       ->setParameter('physician', $physician)
       ->setParameter('field', $field->value)
-      ->setParameter('live', EditReviewStatus::Live->value)
+      ->setParameter('published', EditReviewStatus::publishedValues())
       ->orderBy('e.editedAt', 'ASC')
       ->addOrderBy('e.id', 'ASC')
       ->getQuery()
@@ -94,19 +90,19 @@ class PhysicianEditRepository extends ServiceEntityRepository {
   }
 
   /**
-   * The review queue: everything still awaiting a decision, oldest first.
+   * The review queue: live edits nobody has checked yet, oldest first.
    *
    * Oldest-first because a review queue is a fairness problem — newest-first
    * means an edit proposed on a busy day can sit at the bottom forever.
    *
    * @return Entity\PhysicianEdit[]
    */
-  public function findPending(int $limit = 50): array {
+  public function findUnreviewed(int $limit = 50): array {
     return $this->createQueryBuilder('e')
       ->addSelect('p')
       ->join('e.physician', 'p')
-      ->where('e.reviewStatus = :pending')
-      ->setParameter('pending', EditReviewStatus::Pending->value)
+      ->where('e.reviewStatus = :unreviewed')
+      ->setParameter('unreviewed', EditReviewStatus::Unreviewed->value)
       ->orderBy('e.editedAt', 'ASC')
       ->setMaxResults($limit)
       ->getQuery()

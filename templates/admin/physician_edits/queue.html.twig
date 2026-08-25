@@ -1,0 +1,156 @@
+{#
+  Review queue for physician-proposed edits.
+
+  Each row shows the CHANGE rather than the proposal — current versus proposed,
+  and for taxonomy fields the specific terms being added and removed. A queue
+  that only names the field forces the reviewer to go and look the current value
+  up themselves, which is how careful review quietly stops happening.
+#}
+{% extends '@HMFPSearchTool/admin/layout.html.twig' %}
+{% block admin_page_title %}Physician edits{% endblock %}
+
+{% block content %}
+
+  {% if edits is empty %}
+    <p>No edits are waiting for review.</p>
+  {% else %}
+    <p>
+      {{ edits|length }} edit{{ edits|length == 1 ? '' : 's' }} awaiting review{% if edits|length == queueSize %},
+      showing the oldest {{ queueSize }}{% endif %}.
+      Oldest first, so nothing can sit at the bottom of the list indefinitely.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <caption class="visually-hidden">Physician edits awaiting review</caption>
+        <thead>
+          <tr>
+            <th scope="col">Physician</th>
+            <th scope="col">Field</th>
+            <th scope="col">Change</th>
+            <th scope="col">Proposed by</th>
+            <th scope="col"><span class="visually-hidden">Decision</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for edit in edits %}
+            {% set diff = comparisons[edit.id] %}
+            <tr>
+              <th scope="row">
+                {{ edit.physician.legalName }}
+                {% if edit.physician.credentials is not empty %}
+                  <span class="muted">{{ edit.physician.credentials }}</span>
+                {% endif %}
+                <br>
+                <a href="{{ path('hmfp_search_tool_admin_physician_edit_history', {'id': edit.physician.id}) }}">
+                  History<span class="visually-hidden"> for {{ edit.physician.legalName }}</span>
+                </a>
+              </th>
+
+              <td>{{ edit.fieldName.label }}</td>
+
+              <td>
+                {% if diff.type == 'text' %}
+                  {#
+                    Both values shown in full. A character-level diff would be
+                    nicer but a bio is short enough to read, and a wrong diff is
+                    worse than none when the decision is "is this text
+                    acceptable to publish".
+                  #}
+                  <dl class="edit-diff">
+                    <dt>Currently</dt>
+                    <dd>
+                      {% if diff.current is empty %}
+                        <em class="muted">empty</em>
+                      {% else %}
+                        {{ diff.current }}
+                      {% endif %}
+                    </dd>
+                    <dt>Proposed</dt>
+                    <dd>
+                      {% if diff.proposed is empty %}
+                        <em class="muted">empty — this edit would clear the field</em>
+                      {% else %}
+                        {{ diff.proposed }}
+                      {% endif %}
+                    </dd>
+                  </dl>
+
+                {% else %}
+                  {#
+                    Only the actual delta is shown. A physician resubmitting
+                    eight interests to add one is asking for one addition, and
+                    that is what the reviewer should see.
+                  #}
+                  {% if diff.added is empty and diff.removed is empty %}
+                    <em class="muted">No change — the proposed list matches what is already live.</em>
+                  {% else %}
+                    {% if diff.added is not empty %}
+                      <p class="edit-added">
+                        <span class="label">Adding:</span>
+                        {{ diff.added|join(', ') }}
+                      </p>
+                    {% endif %}
+                    {% if diff.removed is not empty %}
+                      <p class="edit-removed">
+                        <span class="label">Removing:</span>
+                        {{ diff.removed|join(', ') }}
+                      </p>
+                    {% endif %}
+                  {% endif %}
+
+                  <details>
+                    <summary>Full list after approval ({{ diff.proposed|length }})</summary>
+                    {% if diff.proposed is empty %}
+                      <p><em class="muted">empty — this edit would remove all of them</em></p>
+                    {% else %}
+                      <ul>
+                        {% for name in diff.proposed %}<li>{{ name }}</li>{% endfor %}
+                      </ul>
+                    {% endif %}
+                  </details>
+                {% endif %}
+              </td>
+
+              <td>
+                {{ edit.editedByLabel }}<br>
+                <span class="muted">{{ edit.editedAt|date('j M Y, H:i') }}</span>
+              </td>
+
+              <td>
+                {#
+                  Two separate POST forms rather than one with two buttons: a
+                  distinct CSRF token per action means a token minted for a
+                  rejection cannot be replayed as an approval.
+
+                  The accessible names say WHICH physician and field. A column of
+                  identical "Approve" buttons is unusable in a screen reader's
+                  list of controls.
+                #}
+                <form method="post" class="inline"
+                      action="{{ path('hmfp_search_tool_admin_physician_edit_approve', {'id': edit.id}) }}">
+                  <input type="hidden" name="_token" value="{{ csrf_token('approve-edit-' ~ edit.id) }}">
+                  <button type="submit">
+                    Approve<span class="visually-hidden">
+                      {{ edit.fieldName.label }} for {{ edit.physician.legalName }}</span>
+                  </button>
+                </form>
+
+                <form method="post" class="inline"
+                      action="{{ path('hmfp_search_tool_admin_physician_edit_reject', {'id': edit.id}) }}"
+                      onsubmit="return confirm('Reject this {{ edit.fieldName.label|lower }} edit for {{ edit.physician.legalName|e('js') }}?');">
+                  <input type="hidden" name="_token" value="{{ csrf_token('reject-edit-' ~ edit.id) }}">
+                  <button type="submit" class="button--danger">
+                    Reject<span class="visually-hidden">
+                      {{ edit.fieldName.label }} for {{ edit.physician.legalName }}</span>
+                  </button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+{% endblock %}
