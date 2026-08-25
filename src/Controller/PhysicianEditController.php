@@ -12,6 +12,7 @@ use Pixiekat\HMFPSearchToolBundle\Services\PhysicianTaxonomyManager;
 use Pixiekat\SymfonyHelpers\Interfaces as PixieInterfaces;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
@@ -53,6 +54,7 @@ final class PhysicianEditController extends AbstractController {
 
   public function __construct(
     private readonly EntityManagerInterface $entityManager,
+    private readonly RequestStack $requestStack,
     private readonly Repository\PhysicianEditRepository $edits,
     private readonly PhysicianEditManager $editManager,
     private readonly PhysicianTaxonomyManager $taxonomy,
@@ -161,6 +163,22 @@ final class PhysicianEditController extends AbstractController {
     ));
 
     return $this->redirectToRoute('hmfp_search_tool_admin_physician_edits');
+  }
+
+  #[IsGranted(PixieInterfaces\Security\Voter\AdminVoterInterface::ADMIN_ADMINISTER)]
+  #[Route('/admin/physician-edits/history', name: 'hmfp_search_tool_admin_physician_edit_history_all', methods: ['GET'])]
+  public function historyAll(): Response {
+    $perPage = 25;
+    $page = max(1, $this->requestStack->getCurrentRequest()->query->getInt('page', 1));
+    $paginator = $this->edits->paginateStandalone($page, $perPage, ['editedAt' => 'DESC']);
+    $total = count($paginator);
+
+    return $this->render('@HMFPSearchTool/admin/physician_edits/history_all.html.twig', [
+      'edits' => $paginator,
+      'page' => $page,
+      'pages' => max(1, (int) ceil($total / $perPage)),
+      'total' => $total,
+    ]);
   }
 
   #[IsGranted(PixieInterfaces\Security\Voter\AdminVoterInterface::ADMIN_ADMINISTER)]

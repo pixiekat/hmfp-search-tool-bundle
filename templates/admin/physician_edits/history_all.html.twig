@@ -1,0 +1,93 @@
+{% extends '@HMFPSearchTool/admin/layout.html.twig' %}
+{% block admin_page_title %}All Edit History{% endblock %}
+
+{% block content %}
+  <div class="actions">
+    <a href="{{ path('hmfp_search_tool_admin_physician_edits') }}">← Back to review queue</a>
+  </div>
+
+  {% if edits is empty %}
+    <p>No edits have ever been proposed for any physician.</p>
+  {% else %}
+    <div class="table-wrap">
+      <table>
+        <caption>{{ total }} edit{{ total == 1 ? '' : 's' }} · page {{ page }} of {{ pages }}, newest first</caption>
+        <thead>
+          <tr>
+            <th scope="col">Proposed</th>
+            <th scope="col">Physician</th>
+            <th scope="col">Field</th>
+            <th scope="col">Value</th>
+            <th scope="col">Status</th>
+            <th scope="col">Reviewed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for edit in edits %}
+            <tr>
+              <th scope="row">
+                {{ edit.editedAt|date('j M Y, H:i') }}<br>
+                <span class="muted">{{ edit.editedByLabel }}</span>
+              </th>
+
+              <td><a href="{{ path('hmfp_search_tool_admin_physician_edit_history', {'id': edit.physician.id}) }}">{{ edit.physician.legalName }}</a></td>
+
+              <td>{{ edit.fieldName.label }}</td>
+
+              <td>
+                {% if edit.newValue is empty %}
+                  <em class="muted">empty — clears the field</em>
+                {% else %}
+                  {{ edit.newValue }}
+                {% endif %}
+              </td>
+
+              <td>
+                {#
+                  The WORD carries the meaning. Any colour added later is a
+                  redundant cue, never the only one — green/red is exactly the
+                  pairing that collapses under deuteranopia.
+                #}
+                <span class="badge">{{ edit.reviewStatus.label }}</span>
+              </td>
+
+              <td>
+                {% if edit.reviewedAt %}
+                  {{ edit.reviewedAt|date('j M Y, H:i') }}<br>
+                  <span class="muted">
+                    {%- if edit.reviewedBy %}
+                      {{ edit.reviewedBy.displayName }}
+                    {%- else %}
+                      {# The reviewer's account was removed, or the row was
+                         superseded automatically rather than by a person. The edit is still marked as reviewed, but we don't know who did it. The decision still stands — see the SET NULL note on the entity. #}
+                      account removed
+                    {%- endif %}
+                  </span>
+                {% else %}
+                  <em class="muted">not yet reviewed</em>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {% if pages > 1 %}
+    <nav class="pagination" aria-label="Physicians pages">
+      {% if page > 1 %}
+        <a href="{{ path('hmfp_search_tool_admin_physician_edit_history_all', {page: page - 1}) }}" rel="prev">← Previous</a>
+      {% else %}
+        <span class="muted" aria-hidden="true">← Previous</span>
+      {% endif %}
+      <span>Page {{ page }} of {{ pages }}</span>
+      {% if page < pages %}
+        <a href="{{ path('hmfp_search_tool_admin_physician_edit_history_all', {page: page + 1}) }}" rel="next">Next →</a>
+      {% else %}
+        <span class="muted" aria-hidden="true">Next →</span>
+      {% endif %}
+    </nav>
+  {% endif %}
+
+{% endblock %}

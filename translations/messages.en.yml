@@ -24,3 +24,4 @@ audit:
         search.accessed: '%actor% accessed the search tool'
         physician_edit.published: '%actor% proposed an edit for physician'
         physician_edit.rejected: '%actor% rejected the proposed physician edit'
+        physician_edit.confirmed: '%actor% confirmed the proposed physician'

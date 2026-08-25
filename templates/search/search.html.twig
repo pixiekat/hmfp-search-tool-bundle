@@ -284,11 +284,6 @@
               {% if physician.credentials is not empty %}
                 <span class="credentials">{{ physician.credentials }}</span>
               {% endif %}
-
-              {# Propose edit #}
-              <span class="propose-edit">
-                <a href="{{ path('hmfp_search_tool_profile_edit', { id: physician.id }) }}">Propose edit</a>
-              </span>
             </h3>
 
             {#
@@ -400,6 +395,13 @@
               <p class="result-meta">
                 <span class="label">Relevance:</span> {{ scores[physician.id] }}
               </p>
+            {% endif %}
+
+            {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\PhysicianVoterInterface::PERMISSION_CAN_EDIT_PHYSICIAN'), physician) %}
+              {# Propose edit #}
+              <div class="propose-edit">
+                <a class="button" href="{{ path('hmfp_search_tool_profile_edit', { id: physician.id }) }}">Propose edit</a>
+              </div>
             {% endif %}
           </li>
         {% endfor %}

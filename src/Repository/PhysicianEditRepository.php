@@ -8,12 +8,14 @@ use Doctrine\Persistence\ManagerRegistry;
 use Pixiekat\HMFPSearchToolBundle\Entity;
 use Pixiekat\HMFPSearchToolBundle\Enum\EditableField;
 use Pixiekat\HMFPSearchToolBundle\Enum\EditReviewStatus;
+use Pixiekat\SymfonyHelpers\Traits\Repository\PaginationTrait;
 use Symfony\Bundle\SecurityBundle\Security;
 
 /**
  * @extends ServiceEntityRepository<Entity\PhysicianEdit>
  */
 class PhysicianEditRepository extends ServiceEntityRepository {
+  use PaginationTrait;
 
   public function __construct(
     ManagerRegistry $registry,
