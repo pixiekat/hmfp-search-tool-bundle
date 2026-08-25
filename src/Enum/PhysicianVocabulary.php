@@ -91,6 +91,72 @@ enum PhysicianVocabulary: string {
    * @return list<self>
    */
   public static function active(): array {
-    return [self::Specialty, self::Language, self::ClinicalInterest];
+    return [
+      self::Specialty,
+      self::ClinicalInterest,
+      self::Condition,
+      self::Procedure,
+      self::BoardCertification,
+      self::Language,
+    ];
+  }
+
+  /**
+   * Whether a free-text query is matched against this vocabulary's terms.
+   *
+   * The specification defines free-text search as covering "name, condition,
+   * procedure" — and specialty and clinical interest are in the ranking tiers,
+   * so those are searchable too.
+   *
+   * Language and board certification are deliberately NOT. They are filters:
+   * someone typing "Spanish" wants a Spanish-speaking provider, not every
+   * physician who happens to list it, and folding them into keyword matching
+   * would flood a name search with hundreds of weak hits. A filter answers
+   * "narrow to this"; free text answers "find me something like this".
+   */
+  public function isFreeTextSearchable(): bool {
+    return match ($this) {
+      self::Specialty, self::ClinicalInterest, self::Condition, self::Procedure => true,
+      self::Language, self::BoardCertification => false,
+    };
+  }
+
+  /**
+   * The wording for the "no filter applied" option on a select.
+   *
+   * "All specialties" reads naturally; "All languages" does not — someone
+   * filtering by language wants ANY provider who speaks it, not all of them.
+   * Small thing, but the alternative is a generic string that reads awkwardly
+   * on half the controls.
+   */
+  public function anyOptionLabel(): string {
+    return match ($this) {
+      self::Specialty          => 'All specialties',
+      self::ClinicalInterest   => 'Any clinical interest',
+      self::Condition          => 'Any condition',
+      self::Procedure          => 'Any procedure',
+      self::BoardCertification => 'Any board certification',
+      self::Language           => 'Any language',
+    };
+  }
+
+  /**
+   * The request parameter and filter key for this vocabulary.
+   *
+   * Identical to the enum's value by design — one name for one concept, so a
+   * URL reads `?clinical_interest=12` and the repository's filter key is
+   * `clinical_interest` with nothing in between to keep in step.
+   */
+  public function filterKey(): string {
+    return $this->value;
+  }
+
+  /**
+   * The vocabularies free-text search should match against.
+   *
+   * @return list<self>
+   */
+  public static function searchable(): array {
+    return array_values(array_filter(self::active(), static fn (self $v): bool => $v->isFreeTextSearchable()));
   }
 }

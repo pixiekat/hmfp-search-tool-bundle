@@ -173,12 +173,17 @@ final class SearchController extends AbstractController {
       // must be narrowed to one vocabulary — vocabulary_terms holds every
       // taxonomy at once, and an unfiltered read would offer languages and
       // conditions in the specialty dropdown.
-      'specialtyOptions'  => $this->taxonomy->termsByName(PhysicianVocabulary::Specialty),
-      'specialtyId'       => $taxonomyFilters['specialty'] ?? null,
-      'languageOptions'   => $this->taxonomy->termsByName(PhysicianVocabulary::Language),
-      'languageId'        => $taxonomyFilters['language'] ?? null,
-      'clinicalInterestOptions' => $this->taxonomy->termsByName(PhysicianVocabulary::ClinicalInterest),
-      'clinicalInterestId'      => $taxonomyFilters['clinical_interest'] ?? null,
+      // One structure covering every shared-taxonomy filter, rather than a
+      // pair of variables per vocabulary. The template loops over it, so
+      // adding a vocabulary is an enum case and nothing else — no controller
+      // change, no template change.
+      //
+      // Vocabularies with no terms are dropped here rather than in Twig: an
+      // empty <select> reads as broken, and Condition, Procedure and Board
+      // certification have no source in the extract yet. They will appear by
+      // themselves the moment terms exist, whether from an import or from
+      // someone using the taxonomy admin.
+      'taxonomyFilterGroups' => $this->taxonomyFilterGroups($taxonomyFilters),
 
       // Seeds the <datalist> so native autocomplete works with NO JavaScript at
       // all. The suggest endpoint replaces these once scripting is available;
@@ -231,6 +236,37 @@ final class SearchController extends AbstractController {
     $response->setMaxAge(30);
 
     return $response;
+  }
+
+  /**
+   * Filter controls for every shared-taxonomy vocabulary that has terms.
+   *
+   * @param array<string, int|null> $taxonomyFilters
+   *
+   * @return list<array{key: string, label: string, anyLabel: string, options: list<object>, selected: int|null}>
+   */
+  private function taxonomyFilterGroups(array $taxonomyFilters): array {
+    $groups = [];
+
+    foreach (PhysicianVocabulary::active() as $vocabulary) {
+      $options = array_values($this->taxonomy->termsByName($vocabulary));
+
+      if ($options === []) {
+        continue;
+      }
+
+      usort($options, static fn ($a, $b): int => strcasecmp((string) $a->getName(), (string) $b->getName()));
+
+      $groups[] = [
+        'key'      => $vocabulary->filterKey(),
+        'label'    => $vocabulary->label(),
+        'anyLabel' => $vocabulary->anyOptionLabel(),
+        'options'  => $options,
+        'selected' => $taxonomyFilters[$vocabulary->filterKey()] ?? null,
+      ];
+    }
+
+    return $groups;
   }
 
   /**

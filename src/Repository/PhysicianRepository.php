@@ -93,41 +93,53 @@ class PhysicianRepository extends ServiceEntityRepository {
    * BoardCertification, Language) and each should cost one line here plus a
    * control in the template, not another branch in the query builder.
    */
-  private const TAXONOMY_FILTERS = [
+  /**
+   * Filters backed by a DEDICATED table — one join table per entity.
+   *
+   * Only Department and Facility work this way. Everything else is a Term in
+   * the shared taxonomy and is derived from PhysicianVocabulary instead, by
+   * taxonomyFilters() below — so adding a vocabulary costs an enum case and
+   * nothing here.
+   */
+  private const ENTITY_FILTERS = [
     'department' => ['table' => 'physician_departments', 'column' => 'department_id'],
     'facility'   => ['table' => 'physician_facilities',  'column' => 'facility_id'],
-
-    // Shared-taxonomy filters all point at the SAME join table and column —
-    // what distinguishes them is the vocabulary, which is why these entries
-    // carry a third key the dedicated ones do not need.
-    //
-    // The filter value is still a term id, and a term id already implies its
-    // vocabulary, so the extra condition is strictly redundant for a
-    // well-formed request. It is here because the request is not trustworthy:
-    // ?specialty=<id of a Language term> would otherwise filter happily by the
-    // wrong vocabulary. This is the application-level check that stands in for
-    // the foreign key a shared table cannot give us.
-    //
-    // Adding Language or Condition later is one line each.
-    'specialty' => [
-      'table'      => 'physician_terms',
-      'column'     => 'term_id',
-      'vocabulary' => 'specialty',
-    ],
-    'language' => [
-      'table'      => 'physician_terms',
-      'column'     => 'term_id',
-      'vocabulary' => 'language',
-    ],
-    // Populated by the edit projection rather than the import — see
-    // PhysicianEditManager::project(). Identical to filter against, which is
-    // the point of projecting into the same read model.
-    'clinical_interest' => [
-      'table'      => 'physician_terms',
-      'column'     => 'term_id',
-      'vocabulary' => 'clinical_interest',
-    ],
   ];
+
+  /**
+   * Every filter this repository understands, keyed by request parameter.
+   *
+   * ── Why this is built rather than written out ─────────────────────────────
+   * The shared-taxonomy filters are all the same shape — the SAME join table
+   * and the SAME column — distinguished only by which vocabulary the term
+   * belongs to. Listing six of them by hand is six chances for the list to
+   * drift from PhysicianVocabulary, and drift here is silent: a filter that
+   * exists in the enum but not in this list simply never applies, and the
+   * search quietly returns unfiltered results.
+   *
+   * ── The vocabulary condition is a security boundary, not decoration ───────
+   * A term id already implies its vocabulary, so the extra check is redundant
+   * for a well-formed request. It is here because the request is not
+   * trustworthy: `?specialty=<id of a Language term>` would otherwise filter
+   * happily by the wrong vocabulary. It stands in for the foreign key a shared
+   * table cannot provide.
+   *
+   * @return array<string, array{table: string, column: string, vocabulary?: string}>
+   */
+  private static function taxonomyFilters(): array {
+    $filters = self::ENTITY_FILTERS;
+
+    foreach (PhysicianVocabulary::active() as $vocabulary) {
+      $filters[$vocabulary->filterKey()] = [
+        'table'      => 'physician_terms',
+        'column'     => 'term_id',
+        'vocabulary' => $vocabulary->value,
+      ];
+    }
+
+    return $filters;
+  }
+
 
   /**
    * The taxonomy keys this repository knows how to filter on.
@@ -138,7 +150,7 @@ class PhysicianRepository extends ServiceEntityRepository {
    * @return list<string>
    */
   public static function filterableTaxonomies(): array {
-    return array_keys(self::TAXONOMY_FILTERS);
+    return array_keys(self::taxonomyFilters());
   }
 
   /**
@@ -160,7 +172,7 @@ class PhysicianRepository extends ServiceEntityRepository {
    *
    * @param string $term Free-text query over name, specialty and interests;
    *   '' browses by filter alone.
-   * @param array $taxonomyFilters Keyed by taxonomy — see self::TAXONOMY_FILTERS.
+   * @param array $taxonomyFilters Keyed by taxonomy — see self::taxonomyFilters().
    * @param ?string $credential Restrict to this PRIMARY credential, e.g. 'MD'.
    * @param int $page The page number for pagination (1-based).
    * @param int $perPage The number of results per page for pagination.
@@ -230,18 +242,19 @@ class PhysicianRepository extends ServiceEntityRepository {
     }
 
     // Taxonomy filters
-    // Driven by self::TAXONOMY_FILTERS rather than written out per taxonomy,
-    // because six more are coming — Specialty, ClinicalInterest, Condition,
-    // Procedure, BoardCertification, Language — and every one of them is the
-    // same many-to-many shape. Adding one should be a line of configuration,
-    // not another copy of this block.
+    // Driven by self::taxonomyFilters(), which derives the shared-taxonomy
+    // entries from PhysicianVocabulary. Adding a vocabulary therefore costs an
+    // enum case and nothing here — and cannot drift out of step with the enum,
+    // because there is no second list to keep in step.
+    $filterDefinitions = self::taxonomyFilters();
+
     $aliasIndex = 0;
     foreach ($taxonomyFilters as $taxonomy => $id) {
-      if ($id === null || !isset(self::TAXONOMY_FILTERS[$taxonomy])) {
+      if ($id === null || !isset($filterDefinitions[$taxonomy])) {
         continue;
       }
 
-      $join        = self::TAXONOMY_FILTERS[$taxonomy];
+      $join        = $filterDefinitions[$taxonomy];
       $alias       = 'tx' . $aliasIndex++;
       $placeholder = 'tx_' . $taxonomy;
 
@@ -485,10 +498,14 @@ class PhysicianRepository extends ServiceEntityRepository {
         'prefix'       => $prefix,
         'contains'     => $contains,
         'limit'        => $limit,
-        'vocabularies' => [
-          PhysicianVocabulary::Specialty->value,
-          PhysicianVocabulary::ClinicalInterest->value,
-        ],
+        // The SAME set free text is scored against, from the same source of
+        // truth. If these two lists could differ, the typeahead would sooner or
+        // later offer a term that search cannot match — and one suggestion that
+        // leads nowhere costs more trust than ten good ones earn.
+        'vocabularies' => array_map(
+          static fn (PhysicianVocabulary $v): string => $v->value,
+          PhysicianVocabulary::searchable(),
+        ),
       ],
       [
         'limit'        => ParameterType::INTEGER,
@@ -588,10 +605,13 @@ class PhysicianRepository extends ServiceEntityRepository {
       [
         'raw'          => $lower,
         'contains'     => '%' . $this->escapeLike($lower) . '%',
-        'vocabularies' => [
-          PhysicianVocabulary::Specialty->value,
-          PhysicianVocabulary::ClinicalInterest->value,
-        ],
+        // Which vocabularies free text reaches is the enum's decision, not this
+        // method's — see PhysicianVocabulary::isFreeTextSearchable(). Language
+        // and board certification are filters, deliberately excluded.
+        'vocabularies' => array_map(
+          static fn (PhysicianVocabulary $v): string => $v->value,
+          PhysicianVocabulary::searchable(),
+        ),
       ],
       ['vocabularies' => ArrayParameterType::STRING],
     )->fetchAllAssociative();

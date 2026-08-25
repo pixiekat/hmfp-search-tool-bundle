@@ -121,63 +121,30 @@
       </div>
 
       {#
-        Specialty is a Term in the shared taxonomy rather than an entity of its
-        own, but the control is identical — it posts a term id like any other
-        filter posts an entity id. The options are already narrowed to the
-        'specialty' vocabulary by the controller.
+        ── Every shared-taxonomy filter, from one loop ────────────────────────
+        Specialty, clinical interest, condition, procedure, board certification
+        and language are all Terms distinguished only by vocabulary, so the
+        controls are identical and are generated rather than written out six
+        times. Adding a vocabulary is an enum case; nothing changes here.
 
-        termsByName() keys by a normalised name for the importer's benefit, so
-        the values are sorted here for display rather than relying on that
-        key order.
+        The controller omits vocabularies with no terms, so a filter appears the
+        moment it has something to offer and is absent until then — an empty
+        <select> reads as broken, especially for a filter the spec calls
+        required.
       #}
-      <div class="filter">
-        <label for="specialty">Specialty</label>
-        <select id="specialty" name="specialty">
-          <option value="">All specialties</option>
-          {% for option in specialtyOptions|sort((a, b) => a.name|lower <=> b.name|lower) %}
-            <option value="{{ option.id }}" {{ option.id == specialtyId ? 'selected' : '' }}>
-              {{ option.name }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      {#
-        Second vocabulary in the same shared taxonomy, and the control is
-        identical to specialty's — which is the point. Only about a fifth of
-        providers list a language, so this narrows hard; that is the data, not a
-        bug.
-      #}
-      <div class="filter">
-        <label for="language">Language</label>
-        <select id="language" name="language">
-          <option value="">Any language</option>
-          {% for option in languageOptions|sort((a, b) => a.name|lower <=> b.name|lower) %}
-            <option value="{{ option.id }}" {{ option.id == languageId ? 'selected' : '' }}>
-              {{ option.name }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      {#
-        Rendered only when clinical interests actually exist. An empty required
-        filter reads as broken; until physicians start editing, the control has
-        nothing to offer and is better absent than empty.
-      #}
-      {% if clinicalInterestOptions is not empty %}
+      {% for group in taxonomyFilterGroups %}
         <div class="filter">
-          <label for="clinical_interest">Clinical interest</label>
-          <select id="clinical_interest" name="clinical_interest">
-            <option value="">Any clinical interest</option>
-            {% for option in clinicalInterestOptions|sort((a, b) => a.name|lower <=> b.name|lower) %}
-              <option value="{{ option.id }}" {{ option.id == clinicalInterestId ? 'selected' : '' }}>
+          <label for="filter-{{ group.key }}">{{ group.label }}</label>
+          <select id="filter-{{ group.key }}" name="{{ group.key }}">
+            <option value="">{{ group.anyLabel }}</option>
+            {% for option in group.options %}
+              <option value="{{ option.id }}" {{ option.id == group.selected ? 'selected' : '' }}>
                 {{ option.name }}
               </option>
             {% endfor %}
           </select>
         </div>
-      {% endif %}
+      {% endfor %}
 
       <div class="filter">
         <label for="facility">Facility</label>
