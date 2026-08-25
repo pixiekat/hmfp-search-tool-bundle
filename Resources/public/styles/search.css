@@ -1,0 +1,230 @@
+/* Provider search - public UI styles.
+
+  Written to degrade well. Every rule here is presentational, so it should
+  fall back nicely. If you need to style it to match the site, use app.css
+  in symfony asset manager. */
+
+/* Design tokens: Kept as custom properties so the palette can be retuned in one place, and
+   so the dark-mode block below only has to restate colours, never layout. */
+:root {
+  --hmfp-bg: #ffffff;
+  --hmfp-surface: #f7f7f8;
+  --hmfp-border: #d4d4d8;
+  --hmfp-text: #1a1a1e;
+  --hmfp-muted: #56565e;      /* 7.0:1 on white — passes AA for body text */
+  --hmfp-link: #1b4c8c;       /* 7.4:1 on white */
+  --hmfp-link-hover: #0f2f5c;
+  --hmfp-focus: #b45309;
+  --hmfp-mark-bg: #fde68a;
+  --hmfp-mark-text: #3a2c00;  /* deliberate: yellow needs a dark ink to stay AA */
+  --hmfp-radius: 6px;
+  --hmfp-measure: 68ch;
+}
+
+/* Honour an explicit OS preference for dark. Only colours change. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --hmfp-bg: #17171a;
+    --hmfp-surface: #1f1f24;
+    --hmfp-border: #3f3f46;
+    --hmfp-text: #ececf0;
+    --hmfp-muted: #a9a9b4;
+    --hmfp-link: #8ab4f8;
+    --hmfp-link-hover: #adc8fa;
+    --hmfp-focus: #fbbf24;
+    --hmfp-mark-bg: #7c5c00;
+    --hmfp-mark-text: #fff6d8;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--hmfp-bg);
+  color: var(--hmfp-text);
+  font: 1rem/1.6 system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+a { color: var(--hmfp-link); }
+a:hover { color: var(--hmfp-link-hover); }
+
+/* Focus: A visible focus ring is not optional; it is the only way a keyboard user knows where they are. :focus-visible shows it for keyboard interaction without putting a ring on every mouse click. */
+:focus-visible {
+  outline: 3px solid var(--hmfp-focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Skip link: Off-screen rather than display:none, because a hidden element cannot take focus — display:none would remove the link for the very people it exists for. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  padding: 0.6rem 1rem;
+  background: var(--hmfp-bg);
+  border: 2px solid var(--hmfp-focus);
+  z-index: 10;
+}
+.skip-link:focus {
+  left: 0.5rem;
+  top: 0.5rem;
+}
+
+.site-header,
+.site-footer {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+.site-header { border-bottom: 1px solid var(--hmfp-border); }
+.site-footer {
+  border-top: 1px solid var(--hmfp-border);
+  color: var(--hmfp-muted);
+  font-size: 0.875rem;
+}
+.site-brand { margin: 0; font-weight: 600; }
+.site-brand a { text-decoration: none; }
+
+h1 { font-size: 1.6rem; margin: 0 0 1rem; }
+h2 { font-size: 1.2rem; margin: 2rem 0 0.75rem; }
+h3 { font-size: 1.05rem; margin: 0 0 0.25rem; }
+
+.muted { color: var(--hmfp-muted); font-weight: 400; }
+.hint  { color: var(--hmfp-muted); font-size: 0.875rem; margin: 0.35rem 0 0; }
+
+/* Search form styles
+
+All styles pertaining to the physical search form, including the filters and submit button. */
+.search-form {
+  background: var(--hmfp-surface);
+  border: 1px solid var(--hmfp-border);
+  border-radius: var(--hmfp-radius);
+  padding: 1rem;
+}
+
+.search-field label,
+.filter label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+.search-field input[type="search"] {
+  width: 100%;
+  max-width: var(--hmfp-measure);
+  /* 1rem, not smaller: iOS Safari zooms the viewport on focus for anything
+     under 16px, which is disorienting and hard to undo one-handed. */
+  font-size: 1rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--hmfp-border);
+  border-radius: var(--hmfp-radius);
+  background: var(--hmfp-bg);
+  color: var(--hmfp-text);
+}
+
+.search-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 1.25rem 0 0;
+  padding: 0.75rem 1rem 1rem;
+  border: 1px solid var(--hmfp-border);
+  border-radius: var(--hmfp-radius);
+}
+.search-filters legend { font-weight: 600; padding: 0 0.35rem; }
+
+.filter { flex: 1 1 14rem; min-width: 0; }
+.filter select {
+  width: 100%;
+  font-size: 1rem;
+  padding: 0.5rem;
+  border: 1px solid var(--hmfp-border);
+  border-radius: var(--hmfp-radius);
+  background: var(--hmfp-bg);
+  color: var(--hmfp-text);
+}
+
+.search-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.search-actions button {
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 0.6rem 1.4rem;
+  border: 1px solid var(--hmfp-link);
+  border-radius: var(--hmfp-radius);
+  background: var(--hmfp-link);
+  color: #fff;
+  cursor: pointer;
+}
+.search-actions button:hover { background: var(--hmfp-link-hover); }
+
+/* Search results styles
+All styles pertaining to the search results, including the result list and pagination. */
+#search-results:focus { outline: none; } /* focused via skip link; the heading is the cue */
+
+.results {
+  margin: 0;
+  padding: 0 0 0 2.5rem;
+}
+.result {
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--hmfp-border);
+}
+.result-name { font-weight: 600; }
+.credentials { color: var(--hmfp-muted); font-weight: 400; }
+
+/* <mark> gets an explicit colour pair. Browser defaults are black-on-yellow,
+   which inverts badly in dark mode and can fall below contrast minimums. */
+mark {
+  background: var(--hmfp-mark-bg);
+  color: var(--hmfp-mark-text);
+  padding: 0 0.1em;
+  border-radius: 2px;
+}
+
+.match-note {
+  margin: 0.15rem 0;
+  font-size: 0.85rem;
+  color: var(--hmfp-muted);
+  font-style: italic;
+}
+.result-meta { margin: 0.2rem 0; font-size: 0.925rem; }
+.result-meta .label { color: var(--hmfp-muted); }
+
+.suggestions { color: var(--hmfp-muted); max-width: var(--hmfp-measure); }
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+
+/* Small screens: Stack the filters and actions vertically, and indent the results less to make more room for the content. */
+@media (max-width: 40rem) {
+  .search-filters { flex-direction: column; gap: 0.85rem; }
+  .search-actions { flex-direction: column; align-items: stretch; }
+  .search-actions button { width: 100%; }
+  .search-actions .clear-all { text-align: center; }
+  .results { padding-left: 1.6rem; }
+}
+
+/* Respect a reduced-motion preference. Nothing here animates today, but the
+   declaration means anything added later inherits the courtesy by default. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

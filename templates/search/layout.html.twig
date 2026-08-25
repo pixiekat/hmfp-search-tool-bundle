@@ -1,0 +1,43 @@
+{#
+  Public-facing layout for the provider search.
+
+  Extends the helpers bundle's public layout, which in turn extends the
+  application's base.html.twig — so the app keeps final say over <head>, the
+  importmap and any global chrome, exactly as it does for the admin screens.
+
+  Nothing here requires JavaScript. The search is an HTML form and a set of
+  links; if the importmap never loads, every feature on the page still works.
+#}
+{% extends '@PixiekatSymfonyHelpers/layout.html.twig' %}
+
+{% block title %}{% block search_page_title %}Find a provider{% endblock %} · HMFP{% endblock %}
+
+{% block stylesheets %}
+  {{ parent() }}
+  <link rel="stylesheet" href="{{ asset('bundles/hmfpsearchtool/styles/search.css') }}">
+{% endblock %}
+
+{% block body %}
+  {#
+    The skip link is the first focusable thing on the page. Someone navigating
+    by keyboard lands on it before the filters, so they can jump straight to the
+    results instead of tabbing through every dropdown on their way there — which
+    on a refinement page is the difference between usable and exhausting.
+
+    It is visually hidden until focused, not display:none — a hidden element
+    cannot receive focus, so display:none would remove it for everyone.
+  #}
+  <a class="skip-link" href="#search-results">Skip to results</a>
+
+  <header class="site-header">
+    <p class="site-brand"><a href="{{ path('hmfp_search_tool_search') }}">HMFP provider search</a></p>
+  </header>
+
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <p>Provider information is supplied by the hospital and refreshed on each import.</p>
+  </footer>
+{% endblock %}

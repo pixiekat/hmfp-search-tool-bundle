@@ -1,0 +1,204 @@
+{#
+  Provider search — form and results on one page.
+
+  Every interaction here is a GET form or a link. No JavaScript is required or
+  used, so the page works identically with scripting disabled, on an old
+  browser, or over a flaky connection where the JS never arrives.
+#}
+{% extends '@HMFPSearchTool/search/layout.html.twig' %}
+
+{% block search_page_title %}
+  {%- if term is not empty %}Results for “{{ term }}”{% else %}Find a provider{% endif -%}
+{% endblock %}
+
+{% block content %}
+  <h1>Find a provider</h1>
+
+  {#
+    role="search" marks this as THE search landmark, so assistive tech can jump
+    straight to it. method="get" is what makes results linkable and refreshable.
+  #}
+  <form role="search" method="get" action="{{ path('hmfp_search_tool_search') }}" class="search-form">
+
+    <div class="search-field">
+      {#
+        A real <label>, not placeholder text. A placeholder disappears the
+        moment someone types, so it cannot serve as the field's name — and it is
+        invisible to a screen reader reading the form's controls.
+      #}
+      <label for="q">Search by name</label>
+      <input
+        type="search"
+        id="q"
+        name="q"
+        value="{{ term }}"
+        maxlength="100"
+        spellcheck="false"
+        autocapitalize="words"
+        aria-describedby="q-hint"
+      >
+      <p id="q-hint" class="hint">
+        Surname, full name, or part of one. Close spellings are matched too — “smyth” finds “Smith”.
+      </p>
+    </div>
+
+    {#
+      Filters live in a fieldset so their shared purpose is announced once,
+      rather than each select being read as an unrelated control.
+    #}
+    <fieldset class="search-filters">
+      <legend>Narrow results</legend>
+
+      <div class="filter">
+        <label for="department">Department</label>
+        <select id="department" name="department">
+          <option value="">All departments</option>
+          {% for option in departmentOptions %}
+            <option value="{{ option.id }}" {{ option.id == departmentId ? 'selected' : '' }}>
+              {{ option.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter">
+        <label for="facility">Facility</label>
+        <select id="facility" name="facility">
+          <option value="">All facilities</option>
+          {% for option in facilityOptions %}
+            <option value="{{ option.id }}" {{ option.id == facilityId ? 'selected' : '' }}>
+              {{ option.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter">
+        <label for="credential">Credential</label>
+        <select id="credential" name="credential">
+          <option value="">All credentials</option>
+          {% for option in credentialOptions %}
+            <option value="{{ option.credential }}" {{ option.credential == credential ? 'selected' : '' }}>
+              {{ option.credential }} ({{ option.total|number_format }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </fieldset>
+
+    <div class="search-actions">
+      <button type="submit">Search</button>
+      {% if hasCriteria %}
+        <a href="{{ path('hmfp_search_tool_search') }}" class="clear-all">Clear all</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {#
+    tabindex="-1" makes this heading programmatically focusable so the skip link
+    can land on it. Without it the browser would move the viewport but leave
+    keyboard focus stranded up in the form.
+  #}
+  <section id="search-results" aria-labelledby="results-heading" tabindex="-1">
+
+    {% if not hasCriteria %}
+      <h2 id="results-heading">Start a search</h2>
+      <p class="muted">
+        Enter a name above, or narrow by department, facility or credential to browse.
+      </p>
+
+    {% elseif total == 0 %}
+      <h2 id="results-heading">No matching providers</h2>
+      <p class="muted">
+        Nothing matched
+        {%- if term is not empty %} “{{ term }}”{% endif %}
+        {%- if activeFilterCount > 0 %} with {{ activeFilterCount }} filter{{ activeFilterCount == 1 ? '' : 's' }} applied{% endif %}.
+      </p>
+      <ul class="suggestions">
+        <li>Check the spelling, or try just the surname.</li>
+        <li>Remove a filter — the more you apply, the narrower the result.</li>
+        <li>Try a shorter fragment, such as “val” instead of “valente”.</li>
+      </ul>
+
+    {% else %}
+      {#
+        The count goes in the heading rather than a bare paragraph, so it is
+        reachable by heading navigation and read on arrival via the skip link.
+      #}
+      <h2 id="results-heading">
+        {{ total|number_format }} provider{{ total == 1 ? '' : 's' }}
+        {%- if term is not empty %} matching “{{ term }}”{% endif %}
+        {%- if pages > 1 %} <span class="muted">· page {{ page }} of {{ pages }}</span>{% endif %}
+      </h2>
+
+      {#
+        An ordered list, because these results ARE ranked — best match first.
+        <ol> tells a screen reader "item 3 of 20", which is exactly the context
+        a sighted user gets from position on the page.
+      #}
+      <ol class="results" start="{{ (page - 1) * perPage + 1 }}">
+        {% for physician in physicians %}
+          {% set score = scores[physician.id]|default(0) %}
+          <li class="result">
+            <h3 class="result-name">
+              {# hmfp_highlight escapes before inserting <mark> — see SearchExtension. #}
+              {{ physician.legalName|hmfp_highlight(term) }}
+              {% if physician.credentials is not empty %}
+                <span class="credentials">{{ physician.credentials }}</span>
+              {% endif %}
+            </h3>
+
+            {#
+              Phonetic hits are flagged rather than silently mixed in. Someone
+              searching "smyth" who gets "Smith" should be told why, otherwise
+              the result looks like a bug.
+            #}
+            {% if score <= 30 and term is not empty %}
+              <p class="match-note">Similar spelling to “{{ term }}”</p>
+            {% endif %}
+
+            {% if physician.departments|length %}
+              <p class="result-meta">
+                <span class="label">Department{{ physician.departments|length == 1 ? '' : 's' }}:</span>
+                {% for department in physician.departments %}
+                  <a href="{{ path('hmfp_search_tool_search', app.request.query.all|merge({department: department.id, page: 1})) }}">{{ department.name }}</a>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              </p>
+            {% endif %}
+
+            {% if physician.facilities|length %}
+              <p class="result-meta">
+                <span class="label">{{ physician.facilities|length == 1 ? 'Facility' : 'Facilities' }}:</span>
+                {% for facility in physician.facilities %}
+                  <a href="{{ path('hmfp_search_tool_search', app.request.query.all|merge({facility: facility.id, page: 1})) }}">{{ facility.name }}</a>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              </p>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ol>
+
+      {% if pages > 1 %}
+        {#
+          Pagination links carry the whole current query through, so refining
+          and then paging does not silently drop the filters.
+        #}
+        <nav class="pagination" aria-label="Search results pages">
+          {% if page > 1 %}
+            <a href="{{ path('hmfp_search_tool_search', app.request.query.all|merge({page: page - 1})) }}" rel="prev">← Previous</a>
+          {% else %}
+            <span class="muted" aria-hidden="true">← Previous</span>
+          {% endif %}
+
+          <span>Page {{ page }} of {{ pages }}</span>
+
+          {% if page < pages %}
+            <a href="{{ path('hmfp_search_tool_search', app.request.query.all|merge({page: page + 1})) }}" rel="next">Next →</a>
+          {% else %}
+            <span class="muted" aria-hidden="true">Next →</span>
+          {% endif %}
+        </nav>
+      {% endif %}
+    {% endif %}
+  </section>
+{% endblock %}
