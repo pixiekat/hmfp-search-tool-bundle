@@ -8,14 +8,6 @@ use Doctrine\Migrations\AbstractMigration;
 /**
  * Adds the physician edit override layer.
  *
- * Proposed changes accumulate here instead of modifying the imported record, so
- * a read resolves as "latest live edit, else the imported value". The importer
- * never touches this table and this table never touches the importer's columns
- * — which is precisely what lets the import stay file-authoritative with no
- * special cases for editable fields.
- *
- * Nothing here is ever deleted: rejected and superseded edits are the history.
- *
  * @see \Pixiekat\HMFPSearchToolBundle\Entity\PhysicianEdit
  * @see \Pixiekat\HMFPSearchToolBundle\Services\PhysicianEditManager
  */
@@ -32,21 +24,6 @@ final class Version20260825140000_AddPhysicianEdits extends AbstractMigration {
     }
 
     $this->write("Creating table 'physician_edits'...");
-
-    // Notes on the shape:
-    //
-    //   * new_value is nullable because "clear this field" is a real edit and
-    //     must be distinguishable from "no edit exists". The resolver checks
-    //     for the KEY, not for a non-null value.
-    //
-    //   * edited_by is a plain varchar while reviewed_by is a foreign key,
-    //     because they are different populations: reviewers are administrators
-    //     of this application, editors are physicians who will authenticate
-    //     through the hospital's identity system and may have no row here.
-    //
-    //   * reviewed_by is ON DELETE SET NULL, not CASCADE. If an administrator's
-    //     account is removed the decision still happened; losing their name is
-    //     acceptable, losing the record of the approval is not.
     $this->addSql(<<<'SQL'
       CREATE TABLE physician_edits (
         id INT AUTO_INCREMENT NOT NULL,
@@ -97,9 +74,6 @@ final class Version20260825140000_AddPhysicianEdits extends AbstractMigration {
       return;
     }
 
-    // Genuinely destructive: this table IS the edit history, and none of it can
-    // be reconstructed from the imported record — that is the whole point of
-    // keeping the two apart. Export before running this anywhere real.
     $this->write("Dropping table 'physician_edits' — the edit history is lost.");
     $this->addSql('DROP TABLE physician_edits');
   }

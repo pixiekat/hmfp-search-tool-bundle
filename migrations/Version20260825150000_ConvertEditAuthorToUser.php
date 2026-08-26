@@ -7,26 +7,6 @@ use Doctrine\Migrations\AbstractMigration;
 
 /**
  * Makes edit authorship a relation instead of a bare string.
- *
- * `edited_by` was originally a varchar, written on the assumption that
- * physicians would authenticate through an external system and have no row
- * here. They will be ordinary users instead — password today, Azure OAuth
- * later — so it becomes a foreign key, paired with a snapshot label exactly as
- * the audit log pairs actor with actor_label.
- *
- * The pairing is not redundant. The key answers "who is this, now?" and the
- * label answers "who was this, then?". A review history needs the second even
- * after an account is deleted, and it leaves room for an author with no local
- * account at all — which is what an edit pushed from upstream would be.
- *
- * ── On matching a user to a physician ───────────────────────────────────────
- * There is deliberately no physicians.user_id column. A link table between the
- * two would have to be populated and maintained for eleven thousand people who
- * mostly never sign in, and it is not needed: nothing restricts editing to
- * "your own record" — any signed-in user may edit any physician, with review
- * catching what needs catching. Where the question "is this user the physician
- * they are editing?" ever does arise, the email addresses will almost always
- * match, which is cheaper than a column that must be kept true.
  */
 final class Version20260825150000_ConvertEditAuthorToUser extends AbstractMigration {
 

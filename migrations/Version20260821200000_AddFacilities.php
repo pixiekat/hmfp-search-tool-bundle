@@ -8,20 +8,6 @@ use Doctrine\Migrations\AbstractMigration;
 /**
  * Promotes facility from a string on physicians to an entity with a join table.
  *
- * ── Why the column had to go ────────────────────────────────────────────────
- * `physicians.facility_name` modelled one facility per physician. The extract
- * carries one row per physician per SITE: 6,710 of the 10,933 providers in the
- * sample appear at two or more facilities, and one appears at ten. A scalar
- * column therefore held whichever facility the importer happened to reach first
- * — arbitrary, and silently wrong for well over half the table.
- *
- * The data in it is not migrated across, and does not need to be. Every value
- * it held is re-derivable from the extract on the next import, in full rather
- * than truncated to one, so a backfill would be strictly worse than a re-run.
- * The column is dropped rather than left in place because leaving it would
- * invite exactly the ambiguity this change exists to remove: two sources of
- * facility truth, one of them stale and incomplete.
- *
  * @see \Pixiekat\HMFPSearchToolBundle\Entity\Facility
  * @see \Pixiekat\HMFPSearchToolBundle\Entity\Physician::$facilities
  */
@@ -32,11 +18,6 @@ final class Version20260821200000_AddFacilities extends AbstractMigration {
   }
 
   public function up(Schema $schema): void {
-    // ── facilities ──────────────────────────────────────────────────────────
-    // Mirrors departments, minus md_staff_code — nothing in the extract carries
-    // a facility identifier, so a facility is known only by its name. The name
-    // is UNIQUE, which is what makes "have I already created this one?"
-    // answerable during import.
     if ($schema->hasTable('facilities')) {
       $this->write("Table 'facilities' already exists, skipping creation.");
     }
@@ -54,14 +35,6 @@ final class Version20260821200000_AddFacilities extends AbstractMigration {
       SQL);
     }
 
-    // ── physician_facilities ────────────────────────────────────────────────
-    // Same shape as physician_departments, and every clause earns its place for
-    // the same reasons documented there: composite primary key so a pair cannot
-    // be recorded twice, ON DELETE CASCADE on both sides so removing either end
-    // takes its link rows rather than being refused, and a standalone index on
-    // facility_id because the composite key only serves lookups starting with
-    // physician_id — "which physicians practise at this hospital?" would
-    // otherwise be a full scan.
     if ($schema->hasTable('physician_facilities')) {
       $this->write("Table 'physician_facilities' already exists, skipping creation.");
     }
@@ -92,7 +65,7 @@ final class Version20260821200000_AddFacilities extends AbstractMigration {
       $this->write("Table 'physician_facilities' created successfully.");
     }
 
-    // ── Drop the superseded scalar ──────────────────────────────────────────
+    // drop the superseded scalar
     if (!$schema->hasTable('physicians')) {
       return;
     }

@@ -8,20 +8,7 @@ use Doctrine\Migrations\AbstractMigration;
 /**
  * Gives physicians a stable import identity, so re-imports can UPDATE.
  *
- * Adds two columns, both nullable, neither of which disturbs existing rows:
- *
- *   cred_id                 the upstream credentialing UUID — the only stable
- *                           identifier the demographics extract provides
- *   last_seen_in_import_at  when the physician last appeared in an import,
- *                           which is how departures are detected without
- *                           deleting anything
- *
- * Before this, the importer could only insert: it matched existing physicians
- * on legal name plus credentials, so a changed degree produced a duplicate row
- * and a changed department list was ignored entirely. See the class docblock on
- * ImportPhysiciansCommand for the full picture.
- *
- * ── Backfill ────────────────────────────────────────────────────────────────
+ * Backfill
  * Deliberately none. There is no way to work out a physician's cred_id from
  * what is already stored — that is the entire problem this migration solves —
  * so existing rows keep NULL and the importer adopts them on its next run by

@@ -7,27 +7,6 @@ use Doctrine\Migrations\AbstractMigration;
 
 /**
  * Gives facilities an address and coordinates.
- *
- * ── Where the data comes from ───────────────────────────────────────────────
- * Not the provider extract, which supplies a bare `facility_name` and nothing
- * else. These are entered by hand through the admin. That is proportionate
- * rather than lazy: there are TWENTY facilities, so filling them in is an
- * afternoon, and it avoids depending on a geocoding service to place a list
- * that changes perhaps twice a year.
- *
- * Every column is nullable, so nothing has to be filled in before the import
- * can keep running. A facility without coordinates is simply invisible to
- * distance search until someone places it.
- *
- * ── Why no spatial column or index ──────────────────────────────────────────
- * MariaDB 10.11 here does support ST_Distance_Sphere, and a POINT column with
- * a SPATIAL index is the textbook answer. It is the wrong answer at this size:
- * that machinery exists to avoid scanning thousands of rows, and there are
- * twenty. Computing the exact distance to every one of them in PHP costs
- * microseconds, needs no spatial types, and works on any database.
- *
- * Revisit if this table ever holds thousands of sites — the entity comment on
- * Facility::$latitude records the same trigger.
  */
 final class Version20260825160000_AddFacilityLocation extends AbstractMigration {
 
