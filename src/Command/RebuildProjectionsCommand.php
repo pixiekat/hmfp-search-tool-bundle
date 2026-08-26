@@ -17,31 +17,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
  * Rebuilds taxonomy links from the physician edit log.
- *
- * ── Why a projection needs a rebuild command at all ─────────────────────────
- * physician_terms is DERIVED state for editable vocabularies: the truth is the
- * edit log, and the links are a copy kept in a shape search can JOIN against.
- * Derived state drifts — a request that dies between approving and flushing, a
- * database restored from a backup taken mid-write, someone correcting a row by
- * hand. Drift in a read model is uniquely nasty because nothing errors; the
- * search is simply, quietly wrong.
- *
- * The answer is not to try to make drift impossible. It is to make correcting
- * it trivial and safe, so that "rebuild the projections" is a boring thing
- * anyone can run at any time. That is what this is.
- *
- * ── The property that makes it safe ─────────────────────────────────────────
- * PhysicianEditManager::project() recomputes the FULL desired set from the edit
- * log and diffs it against what is stored. It reads nothing that a previous run
- * wrote. So running this once, twice, or halfway and again converges on the
- * same answer, and a run that dies partway leaves the remaining physicians
- * exactly as they were — never half-applied.
- *
- * ── What it does NOT touch ──────────────────────────────────────────────────
- * Only vocabularies backed by an editable field. Specialties and languages come
- * from the import and are rebuilt by re-running hmfp:import:physicians; this
- * command would have no idea what they should contain, and deliberately never
- * looks at them.
  */
 #[AsCommand(
   name: 'hmfp:projections:rebuild',

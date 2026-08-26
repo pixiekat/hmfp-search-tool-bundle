@@ -23,8 +23,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * Imports the provider demographics extract into `physicians` and `departments`.
  *
- * ── Scope ────────────────────────────────────────────────────────────────────
- * A first pass over a twenty-column extract. Three of those columns are
+ * Scope: A first pass over a twenty-column extract. Three of those columns are
  * currently modelled; the rest (NPI, specialty, languages, facility, booking
  * URLs, …) are read past and ignored.
  *
@@ -36,25 +35,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * self::COLUMNS is the seam to widen when the entities grow: add the header
  * name there, then read it in the import pass.
  *
- * ── Three things about the source file that shaped this code ─────────────────
- *
- *   1. It is PIPE-delimited despite the .csv extension. Hence `|` as the
- *      --delimiter default rather than the comma fgetcsv() assumes.
- *
- *   2. It holds one row PER PROVIDER PER DEPARTMENT, not one row per provider.
- *      The sample extract's 21,556 rows describe 10,933 distinct people. Those
- *      repeat rows are not noise to discard — they carry the department list,
- *      and they are the reason the relationship is many-to-many. The physician
- *      is deduplicated on `cred_id`; the departments are unioned.
- *
- *   3. The `department` cell is ITSELF a delimited list, using ';'. A cell
- *      reading "Hospital Medicine; Medicine" means two departments, not one
- *      oddly-named department. Splitting collapses 564 distinct cell values
- *      into 231 real departments, and is what makes filtering by department
- *      meaningful — without it, someone browsing "Medicine" would miss every
- *      physician whose cell happened to pair it with something else.
- *
- * ── Two passes, and why ──────────────────────────────────────────────────────
  * The file is read twice, which looks wasteful until you try to avoid it.
  *
  *   Pass 1 (scanFile) counts rows, collects every distinct department name, and
@@ -76,7 +56,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * list for a physician before that physician is created, so their links are
  * written once, complete, rather than being appended to across a run.
  *
- * ── Identity: how a row in the file is matched to a row in the table ─────────
  * Everything about re-importing hinges on answering one question correctly:
  * "have I seen this person before?" The extract answers it with `cred_id`, a
  * per-provider credentialing UUID, which Physician now stores under a UNIQUE
@@ -93,7 +72,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * sample extract (two Anne M. Valente MDs, two Jennifer W. Lees, two Sandeep
  * Kumars) silently merge into three rows instead of six.
  *
- * ── Adoption: the one place name matching is still used ──────────────────────
  * Physicians created before cred_id existed have NULL in that column, and there
  * is no way to derive their UUID from what is stored. So on its next run the
  * importer ADOPTS them: a provider whose cred_id is unknown falls back to
@@ -110,22 +88,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *      set the moment it is taken, so two same-named providers cannot both
  *      adopt it — the second correctly inserts as a new person.
  *
- * ── What an update actually writes ───────────────────────────────────────────
- * Only fields the extract owns: legalName, credentials, and the department
- * links. `bio` is deliberately never touched, because it does not come from the
- * extract — a bio written by hand in the admin UI must survive every future
- * import, and an upsert that blindly overwrote every column would destroy it.
- * When widening self::COLUMNS later, keep that split in mind: an imported field
- * may be overwritten, a locally-authored one may not.
- *
- * Department links are synced to match the file exactly: links the file no
- * longer lists are REMOVED, not just left behind. That makes a transfer between
- * departments actually take effect, at the documented cost that a link added by
- * hand in the admin UI will be removed on the next run. If that becomes a
- * problem, the fix is an `is_manual` flag on the join table that the sync
- * skips over.
- *
- * ── Departures ───────────────────────────────────────────────────────────────
  * A physician who leaves simply stops appearing in the extract. Nothing is ever
  * deleted in response — one truncated export would otherwise wipe thousands of
  * rows and every bio with them. Instead every physician the import sees is
@@ -135,12 +97,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * there: a NULL stamp means "created by hand, never in an import", which is not
  * a departure.
  *
- * Because that signal is derived from ABSENCE, it is only meaningful when the
- * whole file was processed. --limit stops early by design, so departure
- * reporting is suppressed for limited runs rather than reporting ten thousand
- * false departures.
- *
- * ── The one external dependency, and who owns it ─────────────────────────────
  * All of this rests on cred_id being stable ACROSS extracts, not merely within
  * one. It is verifiably consistent inside the sample file (no cred_id maps to
  * two different name/degree combinations), and the hospital's export team —
@@ -156,19 +112,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * count, on a file that should have been mostly 'unchanged'. If that ever
  * appears in the summary table, suspect the identifier before the importer.
  *
- * ── Memory ───────────────────────────────────────────────────────────────────
- * Nothing here holds the whole file: readRows() is a generator yielding one row
- * at a time, and the EntityManager is flushed and cleared every --batch-size
- * physicians so the identity map cannot accumulate 11k entities. The one
- * structure that does grow is pass 1's cred_id → departments map, which is
- * bounded by the number of PROVIDERS rather than the number of rows — the same
- * scale as the output, and a few MB at present.
  *
- * One thing the command cannot do for you: in `dev` the profiler collects every
- * query executed, which will eat memory no matter how carefully the ORM is
- * cleared. Run bulk imports with --no-debug (or -e prod).
- *
- * ── Usage ────────────────────────────────────────────────────────────────────
+ * Usage
  *   # parse and report without writing anything — always do this first
  *   php bin/console hmfp:import:physicians --dry-run
  *
@@ -379,7 +324,7 @@ final class ImportPhysiciansCommand extends Command {
       ['Mode'        => $dryRun ? 'DRY RUN — nothing will be written' : 'live import'],
     );
 
-    // ── Pass 1: scan ────────────────────────────────────────────────────────
+    // Pass 1: scan
     $io->section('Pass 1 of 2 — scanning');
 
     try {
@@ -398,7 +343,7 @@ final class ImportPhysiciansCommand extends Command {
       number_format(count($scan['facilityNames'])),
     ));
 
-    // ── Sync departments and facilities, so pass 2 only needs their IDs ─────
+    // Sync departments and facilities, so pass 2 only needs their IDs
     $departmentIds      = [];
     $departmentsCreated = 0;
     $facilityIds        = [];
@@ -426,7 +371,7 @@ final class ImportPhysiciansCommand extends Command {
       );
     }
 
-    // ── Specialties: Terms in the shared taxonomy, not their own entity ─────
+    // Specialties: Terms in the shared taxonomy, not their own entity
     $specialtyIds       = [];
     $specialtiesCreated = 0;
 
@@ -446,7 +391,7 @@ final class ImportPhysiciansCommand extends Command {
       PhysicianVocabulary::Language,
     );
 
-    // ── Pass 2: import ──────────────────────────────────────────────────────
+    // Pass 2: import
     $io->section('Pass 2 of 2 — importing physicians');
 
     try {
@@ -476,7 +421,7 @@ final class ImportPhysiciansCommand extends Command {
       return Command::FAILURE;
     }
 
-    // ── Report ──────────────────────────────────────────────────────────────
+    // Report the tallies, and the reasons for any skipped rows or values.
     $io->section('Summary');
     $io->table(
       ['Outcome', 'Count'],
@@ -512,7 +457,7 @@ final class ImportPhysiciansCommand extends Command {
       $io->note('Re-run with -v to see the line number of each skipped row.');
     }
 
-    // ── Departures ──────────────────────────────────────────────────────────
+    // Departures
     // Derived from ABSENCE from the file, so it is only meaningful when the
     // whole file was processed. A --limit run stops early by design, which
     // would make every unprocessed physician look departed — thousands of false
@@ -550,16 +495,9 @@ final class ImportPhysiciansCommand extends Command {
       return Command::SUCCESS;
     }
 
-    // ── Audit ───────────────────────────────────────────────────────────────
-    // ONE summary entry, not one per physician. AuditLogManager's own guidance
-    // is that the database sink is for things a human might later look up; ~11k
-    // per-row entries would bury exactly that. "An import ran, here is what it
-    // did" is the auditable fact.
-    //
-    // Called after the final flush so its own flush() — which commits the whole
-    // unit of work — has nothing of ours left pending to sweep up. In CLI there
-    // is no request and no logged-in user, so the entry records no actor and no
-    // IP; AuditLogManager handles both as null without complaint.
+    // Log the import to the audit log, so it is visible in the admin UI. The log entry is
+    // not a replacement for the console output, but it is a permanent record of
+    // what was done and when, and it is visible to users who do not have console access.
     $this->auditLogManager->log('physicians.imported', context: [
       'file'             => $file,
       'created'          => $stats['created'],
@@ -659,7 +597,7 @@ final class ImportPhysiciansCommand extends Command {
         $credIdSpecialties[$credId] ??= [];
         $credIdLanguages[$credId]   ??= [];
 
-        // ── Specialties ────────────────────────────────────────────────────
+        // Specialties
         // Same ';'-nested shape as the department cell ("Internal Medicine;
         // Pediatrics" is two specialties), so it reuses the same splitter.
         //
@@ -678,7 +616,7 @@ final class ImportPhysiciansCommand extends Command {
           $credIdSpecialties[$credId][$key] = true;
         }
 
-        // ── Languages ──────────────────────────────────────────────────────
+        // Languages
         // COMMA-separated, unlike department and specialty. See splitList().
         //
         // Only about a quarter of rows carry any — 2,222 of the 10,933
@@ -741,7 +679,7 @@ final class ImportPhysiciansCommand extends Command {
           }
         }
 
-        // ── Facilities ─────────────────────────────────────────────────────
+        // Facilities
         // Simpler than departments in one respect: the cell is NOT a nested
         // list, so there is nothing to split — one row names one facility. The
         // many-to-many comes purely from the SAME PROVIDER appearing on several
@@ -804,7 +742,6 @@ final class ImportPhysiciansCommand extends Command {
   /**
    * Strips the export artifacts off a facility cell.
    *
-   * ── Why this field alone needs it ─────────────────────────────────────────
    * `facility_name` is the LAST column in the extract, and the xlsx export
    * appended seven empty spreadsheet columns after it. resolveColumnIndex()
    * strips those from the HEADER so the column can be found at all — but the
@@ -814,20 +751,6 @@ final class ImportPhysiciansCommand extends Command {
    * The count is not fixed: across the sample it ranges from 0 to 7 trailing
    * commas depending on the row. So this has to strip a variable-length run,
    * which is exactly what rtrim() with a character list does.
-   *
-   * ── Why rtrim and not str_replace ─────────────────────────────────────────
-   * Because at least one real facility name contains a comma:
-   *
-   *     "Mount Auburn Cambridge, IPA,,,,,"
-   *
-   * rtrim() only removes characters from the END, so that becomes
-   * "Mount Auburn Cambridge, IPA" with its genuine comma intact. A
-   * str_replace(',', '', …) would have produced "Mount Auburn Cambridge IPA",
-   * quietly corrupting the name — and it would have looked fine in every row
-   * that did not happen to contain one.
-   *
-   * Note what is NOT needed here: the file uses CRLF line endings, but
-   * fgetcsv() strips them itself, so no \r ever reaches this method.
    */
   private function cleanFacilityName(string $cell): string {
     // Whitespace as well as commas, so " Anna Jaques Hospital , , ," resolves
@@ -1028,12 +951,12 @@ final class ImportPhysiciansCommand extends Command {
 
     $columnIndex = $this->resolveColumnIndex($handle, $delimiter);
 
-    // ── State carried across the whole pass ────────────────────────────────
+    // State carried across the whole pass
     $index     = $this->loadImportIndex();
     $byCredId  = $index['byCredId'];
     $adoptable = $index['adoptable'];
 
-    // ── The two association sets, described once ──────────────────────────
+    // The two association sets, described once
     // Departments and facilities are handled identically from here on: resolve
     // the desired ids, diff against the current ones, attach and detach. Rather
     // than writing that twice — and letting the two copies drift the first time
@@ -1187,7 +1110,7 @@ final class ImportPhysiciansCommand extends Command {
           $desired[$name] = $list;
         }
 
-        // ── Identify: have we seen this person before? ─────────────────────
+        // have we seen this person before?
         $match   = $byCredId[$credId] ?? null;
         $adopted = false;
 
@@ -1212,7 +1135,8 @@ final class ImportPhysiciansCommand extends Command {
         }
 
         if ($match === null) {
-          // ── INSERT ───────────────────────────────────────────────────────
+          // insert a new row, with all the associations in one go. The entity is
+          // stamped with the run time so it is not left out of the bulk update at the end.
           $stats['created']++;
 
           if (!$dryRun) {
@@ -1263,7 +1187,9 @@ final class ImportPhysiciansCommand extends Command {
           }
         }
         else {
-          // ── UPDATE or leave alone ────────────────────────────────────────
+          // either update or skip. The entity is NOT loaded yet — the decision to load
+          // it is made from memory, so a physician whose details did not change avoids
+          // a SELECT entirely.
           $id = $match['id'];
           $seenIds[] = $id;
 
@@ -1285,8 +1211,7 @@ final class ImportPhysiciansCommand extends Command {
             $currentList = array_keys($association['links'][$id] ?? []);
             sort($currentList);
 
-            // Compare as sorted lists: same members, same order, so a plain
-            // !== is a correct set comparison here.
+            // Compare as sorted lists: the order of the links is not significant, only their presence or absence.
             if ($desired[$name] === $currentList) {
               continue;
             }
@@ -1359,7 +1284,7 @@ final class ImportPhysiciansCommand extends Command {
           }
         }
 
-        // -- Flush in batches -------------------------------------------------
+        // Flush in batches
         // persist() only queues. Without a periodic flush + clear, the identity
         // map would hold every entity touched so far and each successive flush
         // would walk all of them looking for changes — quadratic work, and
@@ -1623,13 +1548,12 @@ final class ImportPhysiciansCommand extends Command {
   /**
    * Loads everything needed to decide insert-vs-update, in two queries.
    *
-   * ── Why load it all up front ──────────────────────────────────────────────
    * The alternative is a findOneBy() per provider — around 11,000 round trips,
    * where per-query overhead dominates every other cost in the command. Two
    * scalar queries returning arrays instead of hydrated entities keep the whole
    * index in a few MB, which is the same order as the output itself.
    *
-   * ── The two lookup tables, and why there are two ──────────────────────────
+   * The two lookup tables, and why there are two
    *   byCredId    the real index: cred_id → current field values. Used for
    *               every physician a previous import created.
    *   adoptable   signature → id, containing ONLY rows whose cred_id is NULL —
@@ -1717,15 +1641,6 @@ final class ImportPhysiciansCommand extends Command {
    * Uses raw DBAL rather than DQL because the join table is not an entity —
    * a many-to-many association table has no PHP class to query against.
    *
-   * ── On interpolating the table name ──────────────────────────────────────
-   * $table and $column are concatenated into the SQL rather than bound as
-   * parameters, because SQL identifiers cannot be bound — a placeholder may
-   * stand for a value, never for a table or column name. That would be an
-   * injection risk if either came from user input; both are hard-coded literals
-   * supplied by loadImportIndex(), and nothing reaches this method from the
-   * command line or the file. Keep it that way: if a caller ever needs to pass
-   * a dynamic name, validate it against an allow-list first.
-   *
    * @param string $table  Join table to read.
    * @param string $column The non-physician side's column in that table.
    *
@@ -1769,7 +1684,6 @@ final class ImportPhysiciansCommand extends Command {
   /**
    * Stamps lastSeenInImportAt on every physician this run matched.
    *
-   * ── Why a bulk UPDATE rather than setting it on each entity ───────────────
    * This stamp touches EVERY physician in the file, including the great
    * majority whose data did not change at all. Loading ~11,000 entities purely
    * to write one timestamp each would undo the entire point of the in-memory
@@ -1778,12 +1692,6 @@ final class ImportPhysiciansCommand extends Command {
    *
    * Newly inserted physicians are NOT passed here: they get their stamp set
    * directly on the entity at construction, where it costs nothing extra.
-   *
-   * ── Why chunked ───────────────────────────────────────────────────────────
-   * A single `WHERE id IN (…)` with 11,000 parameters risks hitting the
-   * driver's placeholder limit and produces a query text large enough to be
-   * slow to parse. Chunking keeps each statement comfortably sized; the exact
-   * value is not critical, only that it is bounded.
    *
    * @param list<int> $ids Physician ids seen in this run.
    */
