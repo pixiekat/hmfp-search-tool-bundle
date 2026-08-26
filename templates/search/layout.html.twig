@@ -12,6 +12,12 @@
 
 {% block title %}{% block search_page_title %}Find a provider{% endblock %} · HMFP{% endblock %}
 
+{% block metas %}
+  {{ parent() }}
+  <meta name="content-language" content="en">
+  <meta name="description" content="Search for physicians, facilities, and departments in the HMFP provider directory.">
+{% endblock %}
+
 {% block stylesheets %}
   {{ parent() }}
   <link rel="stylesheet" href="{{ asset('bundles/hmfpsearchtool/styles/search.css') }}">
