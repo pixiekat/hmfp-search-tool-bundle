@@ -1,0 +1,13 @@
+{% extends admin_layout %}
+
+{% block admin_page_title %}{{ 'Search Statistics'|trans }}{% endblock %}
+
+{% block content %}
+    <div class="admin-welcome">
+        <p>{{ 'Search statistics for the last 30 days.'|trans }}</p>
+
+        <div class="search-stats">
+            {% include '@HMFPSearchTool/admin/partials/search_stats_block.html.twig' with {'topMatchedTerms': topMatchedTerms, 'totalPhysicians': totalPhysicians, 'totalDepartments': totalDepartments, 'totalFacilities': totalFacilities} %}
+        </div>
+    </div>
+{% endblock %}

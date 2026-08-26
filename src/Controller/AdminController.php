@@ -5,6 +5,7 @@ namespace Pixiekat\HMFPSearchToolBundle\Controller;
 use Doctrine\ORM\EntityManagerInterface;
 use Pixiekat\HMFPSearchToolBundle\Entity;
 use Pixiekat\HMFPSearchToolBundle\Form;
+use Pixiekat\HMFPSearchToolBundle\Repository;
 use Pixiekat\SymfonyHelpers\Interfaces as PixieInterfaces;
 use Pixiekat\SymfonyHelpers\Services\AuditLogManager;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -24,7 +25,26 @@ final class AdminController extends AbstractController {
     private readonly RequestStack $requestStack,
     private readonly UserPasswordHasherInterface $passwordHasher,
     private readonly AuditLogManager $auditLogManager,
+    private readonly Repository\SearchEventRepository $searchEvents,
   ) {  }
+
+  #[Route('/statistics', name: 'hmfp_search_tool_statistics')]
+  public function searchStatsBlock(): Response {
+    $totalPhysicians = $this->entityManager->getRepository(Entity\Physician::class)->count([]);
+    $totalDepartments = $this->entityManager->getRepository(Entity\Department::class)->count([]);
+    $totalFacilities = $this->entityManager->getRepository(Entity\Facility::class)->count([]);
+
+    // top matched terms for the last 30 days, ordered by count descending, limited to 10 results.
+    $topMatchedTerms = $this->searchEvents->topMatchedTerms(\DateTimeImmutable::createFromFormat('Y-m-d', date('Y-m-d', strtotime('-30 days'))), 10);
+
+
+    return $this->render('@HMFPSearchTool/admin/search_stats.html.twig', [
+      'totalPhysicians' => $totalPhysicians,
+      'totalDepartments' => $totalDepartments,
+      'totalFacilities' => $totalFacilities,
+      'topMatchedTerms' => $topMatchedTerms,
+    ]);
+  }
 
   #[Route('/users', name: 'hmfp_search_tool_admin_users_list')]
   public function listUsers(): Response {

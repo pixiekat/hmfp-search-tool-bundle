@@ -1,0 +1,24 @@
+<div class="search-stats">
+  <h3>Search Statistics</h3>
+  <ul>
+    <li>Total Physicians: {{ totalPhysicians }}</li>
+    <li>Total Departments: {{ totalDepartments }}</li>
+    <li>Total Facilities: {{ totalFacilities }}</li>
+  </ul>
+
+  {% if topMatchedTerms is not empty %}
+    <h4>Top Matched Terms (Last 30 Days)</h4>
+    <ol>
+      {% for term in topMatchedTerms %}
+        <li>{{ '%matched_term_name (%matched_vocabulary): %searches'|trans({
+          '%matched_term_name': term.matched_term_name,
+          '%matched_vocabulary': term.matched_vocabulary,
+          '%searches': term.searches
+        }) }}</li>
+        </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <p>No search terms found in the last 30 days.</p>
+  {% endif %}
+</div>
