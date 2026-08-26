@@ -1,0 +1,49 @@
+{% extends '@HMFPSearchTool/search/layout.html.twig' %}
+
+{% block search_page_title %}Viewing: {{ physician.legalName }}{% endblock %}
+
+{% block content %}
+  <h1>View profile</h1>
+
+  <div class="profile">
+    <h2>{{ physician.legalName }}{% if physician.credentials is not empty %}, {{ physician.credentials }}{% endif %}</h2>
+    <p class="muted">
+      {{ physician.getDepartments|map(d => d.getName)|join(', ') }}
+      {% if physician.getDepartments|length > 0 and physician.getFacilities|length > 0 %} · {% endif %}
+      {{ physician.getFacilities|map(f => f.getName)|join(', ') }}
+    </p>
+
+    {% if bio is defined and bio is not empty %}
+      <section class="bio">
+        <h3>Biography</h3>
+        <p>{{ bio|nl2br }}</p>
+      </section>
+    {% endif %}
+
+    {% if interests is defined and interests is not empty %}
+      <section class="interests">
+        <h3>Clinical Interests</h3>
+        <ul>
+          {% for interest in interests %}
+            <li>{{ interest }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    {% if last_edit is not empty %}
+      <section class="edits">
+        <p><em>Last updated by {{ last_edit.getEditedByLabel }} at {{ last_edit.editedAt|date('m/d/Y g:i A') }}</em></p>
+      </section>
+    {% endif %}
+
+    <div class="actions">
+      {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\PhysicianVoterInterface::PERMISSION_CAN_EDIT_PHYSICIAN'), physician) %}
+        <a class="button" href="{{ path('hmfp_search_tool_profile_edit', {'id': physician.id}) }}" class="button">Edit</a>
+      {% endif %}
+      {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\SearchVoterInterface::PERMISSION_CAN_ACCESS_SEARCH'), physician) %}
+        <a class="button" href="{{ path('hmfp_search_tool_home_front', {'id': physician.id}) }}">Return to Search</a>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

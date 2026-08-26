@@ -280,7 +280,13 @@
           <li class="result">
             <h3 class="result-name">
               {# hmfp_highlight escapes before inserting <mark> — see SearchExtension. #}
-              {{ physician.legalName|hmfp_highlight(term) }}
+              {% if is_granted('ROLE_USER') %}
+                <a href="{{ path('hmfp_search_tool_profile_view', { id: physician.id }) }}">
+                  {{ physician.legalName|hmfp_highlight(term) }}
+                </a>
+              {% else %}
+                {{ physician.legalName|hmfp_highlight(term) }}
+              {% endif %}
               {% if physician.credentials is not empty %}
                 <span class="credentials">{{ physician.credentials }}</span>
               {% endif %}

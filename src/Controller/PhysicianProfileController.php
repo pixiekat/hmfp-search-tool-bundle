@@ -35,8 +35,27 @@ final class PhysicianProfileController extends AbstractController {
   ) {  }
 
   #[IsGranted('ROLE_USER')]
-  #[Route('/physicians/{id}/edit-profile', name: 'hmfp_search_tool_profile_edit', requirements: ['id' => '\\d+'], methods: ['GET'])]
-  public function show(int $id): Response {
+  #[Route('/physicians/{id}', name: 'hmfp_search_tool_profile_view', requirements: ['id' => '\\d+'], methods: ['GET'])]
+  public function viewPhysician(Entity\Physician $physician): Response {
+    $edits = $this->edits->findHistoryFor($physician);
+    $last_edit = null;
+    if (!empty($edits)) {
+      $last_edit = $edits[0];
+    }
+
+    return $this->render('@HMFPSearchTool/profile/view.html.twig', [
+      'physician' => $physician,
+      'bio' => $this->editManager->resolve($physician, EditableField::Bio),
+      'interests' => $this->taxonomy->termsFor($physician, PhysicianVocabulary::ClinicalInterest),
+      'edits' => $edits,
+      'lastSeenInImportAt' => $physician->getLastSeenInImportAt(),
+      'last_edit' => $last_edit,
+    ]);
+  }
+
+  #[IsGranted('ROLE_USER')]
+  #[Route('/physicians/{id}/edit', name: 'hmfp_search_tool_profile_edit', requirements: ['id' => '\\d+'], methods: ['GET'])]
+  public function editPhysician(int $id): Response {
     return $this->render('@HMFPSearchTool/profile/edit.html.twig', $this->viewData($this->requirePhysician($id)));
   }
 

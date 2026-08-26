@@ -37,7 +37,9 @@
             {% set diff = comparisons[edit.id] %}
             <tr>
               <th scope="row">
-                {{ edit.physician.legalName }}
+                <a href="{{ path('hmfp_search_tool_profile_view', {'id': edit.physician.id}) }}">
+                  {{ edit.physician.legalName }}
+                </a>
                 {% if edit.physician.credentials is not empty %}
                   <span class="muted">{{ edit.physician.credentials }}</span>
                 {% endif %}
