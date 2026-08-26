@@ -38,12 +38,11 @@ class PhysicianRepository extends ServiceEntityRepository {
    * Named rather than inlined as magic numbers so the ORDER OF PREFERENCE is
    * legible in one place, and so a template can explain to a user why a result
    * ranked where it did.
-   */
-  /*
-   * ── The order comes from the specification ────────────────────────────────
-   *   Rule: an exact NAME match always ranks highest.
-   *   Then: exact specialty → clinical interest → keyword relevance →
-   *         location proximity → research relevance.
+   *
+   * The order of preference is the order the specification sets out, and the scores are:
+   *  - an exact NAME match always ranks highest.
+   *  - then: exact specialty -> clinical interest -> keyword relevance ->
+   *    location proximity -> research relevance.
    *
    * Proximity is applied as a FILTER rather than as a score tier: a radius is
    * a hard boundary — "not within ten miles" means not a result at all, not a
@@ -54,19 +53,19 @@ class PhysicianRepository extends ServiceEntityRepository {
    * Research relevance is a later phase, which is why the gaps below stay wide.
    */
 
-  /** Someone typed the whole name. Beats everything, by rule. */
+  // someone typed the whole name. Beats everything, by rule.
   public const SCORE_EXACT_FULL    = 1000;
 
-  /** Someone typed just the surname — still an exact name match. */
+  // someone typed just the surname — still an exact name match.
   public const SCORE_EXACT_SURNAME = 900;
 
-  /** The query IS a specialty: "cardiology" finding every cardiologist. */
+  // the query IS a specialty: "cardiology" finding every cardiologist.
   public const SCORE_EXACT_SPECIALTY = 800;
 
-  /** The query IS a clinical interest: "heart failure". */
+  // the query IS a clinical interest: "heart failure".
   public const SCORE_EXACT_INTEREST = 700;
 
-  /* ── Keyword relevance, in descending confidence ────────────────────────── */
+  // keyword relevance, in descending confidence
   public const SCORE_PREFIX_FULL     = 600; // "anne m. val…"
   public const SCORE_PREFIX_SURNAME  = 550; // "val…" matching Valente
   public const SCORE_CONTAINS        = 500; // "lent" anywhere in the name
@@ -75,15 +74,10 @@ class PhysicianRepository extends ServiceEntityRepository {
 
   /**
    * Phonetic — last, and far below everything literal.
-   *
-   * SOUNDEX is noisy (it returns Khan and Kim for "kohen"), so a phonetic hit
-   * must never displace something the user actually typed. The gap is large on
-   * purpose: no combination of weaker signals should lift a phonetic match
-   * above a literal one.
    */
   public const SCORE_PHONETIC      = 200;
 
-  /** No search term; filters only. Ordering falls back to name. */
+  // no search term; filters only. Ordering falls back to name.
   public const SCORE_BROWSE        = 0;
 
   /**
@@ -101,21 +95,6 @@ class PhysicianRepository extends ServiceEntityRepository {
 
   /**
    * Every filter this repository understands, keyed by request parameter.
-   *
-   * ── Why this is built rather than written out ─────────────────────────────
-   * The shared-taxonomy filters are all the same shape — the SAME join table
-   * and the SAME column — distinguished only by which vocabulary the term
-   * belongs to. Listing six of them by hand is six chances for the list to
-   * drift from PhysicianVocabulary, and drift here is silent: a filter that
-   * exists in the enum but not in this list simply never applies, and the
-   * search quietly returns unfiltered results.
-   *
-   * ── The vocabulary condition is a security boundary, not decoration ───────
-   * A term id already implies its vocabulary, so the extra check is redundant
-   * for a well-formed request. It is here because the request is not
-   * trustworthy: `?specialty=<id of a Language term>` would otherwise filter
-   * happily by the wrong vocabulary. It stands in for the foreign key a shared
-   * table cannot provide.
    *
    * @return array<string, array{table: string, column: string, vocabulary?: string}>
    */
@@ -173,7 +152,7 @@ class PhysicianRepository extends ServiceEntityRepository {
    *   one of these facilities. null means no proximity filter; an EMPTY array
    *   means a radius was applied and nothing fell inside it, which matches
    *   nobody — the two are not interchangeable.
-   * @return array{results: Entity\Physician[], total: int, scores: array<int, int>}
+   * @return array{results: Entity\Physician[], total: int, scores: array<int, int>, exactMatch: array{id: int, name: string, vocabulary: string}|null}
    */
   public function search(
     string $term,
@@ -189,14 +168,7 @@ class PhysicianRepository extends ServiceEntityRepository {
     $where  = [];
     $params = [];
 
-    // ── Which taxonomy terms does the query itself name? ────────────────────
-    // Resolved ONCE, up front, rather than joining vocabulary_terms and running
-    // a LIKE against it for every physician. That table holds ~400 rows, so
-    // matching it costs almost nothing; doing the same work per physician would
-    // multiply it by 10,933.
-    //
-    // What comes back is four id lists, which the main query then uses through
-    // an indexed `term_id IN (…)` — an index lookup rather than a scan.
+    // Which taxonomy terms does the query itself name?
     $matchedTerms = $term === '' ? null : $this->matchTerms($term);
 
     // $term is the search query that we're searching for. Obviously we don't
@@ -221,9 +193,8 @@ class PhysicianRepository extends ServiceEntityRepository {
       $allTermIds = $matchedTerms['all'] ?? [];
 
       if ($allTermIds !== []) {
-        $nameClause = sprintf(
-          '(%s OR EXISTS (SELECT 1 FROM physician_terms qt
-                           WHERE qt.physician_id = p.id AND qt.term_id IN (%s)))',
+        $nameClause = sprintf('(%s OR EXISTS (SELECT 1 FROM physician_terms qt
+          WHERE qt.physician_id = p.id AND qt.term_id IN (%s)))',
           $nameClause,
           // Interpolated because these are ints this method produced from its
           // own query — never request data. Binding an array would need
@@ -296,7 +267,7 @@ class PhysicianRepository extends ServiceEntityRepository {
       $params['credential'] = $credential;
     }
 
-    // ── Proximity ───────────────────────────────────────────────────────────
+    // Proximity
     // The caller has already worked out WHICH facilities fall inside the
     // radius — that is a question about twenty rows and belongs in
     // FacilityRepository. By the time it reaches here it is an ordinary
@@ -334,11 +305,17 @@ class PhysicianRepository extends ServiceEntityRepository {
       $params,
     )->fetchOne();
 
+    // The single term the query named EXACTLY, if it named one. This is what
+    // makes "top specialties searched" answerable: a partial match touches
+    // dozens of terms and says nothing about intent, whereas an exact match is
+    // an unambiguous statement of what someone was looking for.
+    $exactMatch = $this->firstExactMatch($matchedTerms);
+
     if ($total === 0) {
-      return ['results' => [], 'total' => 0, 'scores' => []];
+      return ['results' => [], 'total' => 0, 'scores' => [], 'exactMatch' => $exactMatch];
     }
 
-    // ── The scored page ─────────────────────────────────────────────────────
+    // The scored page
     // A CASE, so the FIRST matching branch wins and the branches are written in
     // the specification's priority order. That is what enforces "exact name
     // always highest": it is the first test, so nothing below can outrank it,
@@ -391,7 +368,7 @@ class PhysicianRepository extends ServiceEntityRepository {
 
     if ($rows === []) {
       // A page past the end of the result set.
-      return ['results' => [], 'total' => $total, 'scores' => []];
+      return ['results' => [], 'total' => $total, 'scores' => [], 'exactMatch' => $exactMatch];
     }
 
     $ids    = array_map(static fn (array $r): int => (int) $r['id'], $rows);
@@ -462,13 +439,64 @@ class PhysicianRepository extends ServiceEntityRepository {
       }
     }
 
-    return ['results' => $ordered, 'total' => $total, 'scores' => $scores];
+    return [
+      'results'    => $ordered,
+      'total'      => $total,
+      'scores'     => $scores,
+      'exactMatch' => $exactMatch,
+    ];
+  }
+
+  /**
+   * The taxonomy term a query named exactly, if any.
+   *
+   * Specialty is preferred over clinical interest when a query somehow matches
+   * both exactly, because specialty is the broader and more deliberate signal —
+   * and the tie is vanishingly rare in practice.
+   *
+   * The NAME is returned alongside the id so the caller can snapshot it. An
+   * analytics row that stores only an id stops meaning anything the moment the
+   * taxonomy is tidied.
+   *
+   * @param array{exactSpecialty: list<int>, exactInterest: list<int>}|null $matchedTerms
+   *
+   * @return array{id: int, name: string, vocabulary: string}|null
+   */
+  private function firstExactMatch(?array $matchedTerms): ?array {
+    if ($matchedTerms === null) {
+      return null;
+    }
+
+    foreach (['exactSpecialty', 'exactInterest'] as $bucket) {
+      $ids = $matchedTerms[$bucket] ?? [];
+
+      if ($ids === []) {
+        continue;
+      }
+
+      $row = $this->entityManager->getConnection()->executeQuery(
+        'SELECT t.id, t.name, v.name AS vocabulary
+           FROM vocabulary_terms t
+           JOIN vocabularies v ON v.id = t.vocabulary_id
+          WHERE t.id = :id',
+        ['id' => $ids[0]],
+      )->fetchAssociative();
+
+      if ($row !== false) {
+        return [
+          'id'         => (int) $row['id'],
+          'name'       => (string) $row['name'],
+          'vocabulary' => (string) $row['vocabulary'],
+        ];
+      }
+    }
+
+    return null;
   }
 
   /**
    * Suggestions for a partially-typed query.
    *
-   * ── Suggests what search actually matches ─────────────────────────────────
    * Names, specialties and clinical interests — the same three things a
    * free-text query is scored against. A typeahead that offers something the
    * search cannot then find is worse than none at all, because it teaches the
@@ -480,7 +508,6 @@ class PhysicianRepository extends ServiceEntityRepository {
    * result the user wanted. The typeahead and the ranking reinforce each other
    * instead of being two separate notions of relevance.
    *
-   * ── Ordering ──────────────────────────────────────────────────────────────
    * Taxonomy terms first, then names. A specialty is a broad, useful query;
    * a single physician's name is narrow, and someone typing "car" is far more
    * likely to be looking for cardiology than for Dr Carmichael. Within each
@@ -504,7 +531,6 @@ class PhysicianRepository extends ServiceEntityRepository {
 
     $connection = $this->entityManager->getConnection();
 
-    // ── Taxonomy terms ──────────────────────────────────────────────────────
     // Only vocabularies that free text is scored against. Language and
     // department are filters rather than keywords, so suggesting them here
     // would produce a query that matches nothing.
@@ -541,8 +567,7 @@ class PhysicianRepository extends ServiceEntityRepository {
       $suggestions[] = ['value' => (string) $row['value'], 'kind' => (string) $row['kind']];
     }
 
-    // ── Physician names ─────────────────────────────────────────────────────
-    // Only the remaining slots, so a query that is clearly a specialty does not
+    // Physician names: only the remaining slots, so a query that is clearly a specialty does not
     // waste half the list on coincidental name matches.
     $remaining = $limit - count($suggestions);
 
@@ -593,22 +618,6 @@ class PhysicianRepository extends ServiceEntityRepository {
 
   /**
    * Finds the taxonomy terms a free-text query names.
-   *
-   * ── Why this is a separate, up-front query ────────────────────────────────
-   * The alternative is joining vocabulary_terms into the main search and
-   * running a LIKE against it per physician. vocabulary_terms holds a few
-   * hundred rows, so matching it once costs almost nothing — doing it per
-   * physician multiplies that by 10,933 for no additional information.
-   *
-   * Resolving to ids first also means the main query can use `term_id IN (…)`
-   * against an indexed column, which is a lookup rather than a scan.
-   *
-   * ── Exact and partial are kept apart ──────────────────────────────────────
-   * They score differently and the specification treats them differently: an
-   * exact specialty match is a strong signal ("cardiology" — this person IS a
-   * cardiologist), a partial one is weak ("cardio" — might be Cardiology, might
-   * be Cardiothoracic Surgery). Collapsing them would rank a substring hit as
-   * highly as someone typing the specialty's full name.
    *
    * @return array{
    *   exactSpecialty: list<int>, partialSpecialty: list<int>,

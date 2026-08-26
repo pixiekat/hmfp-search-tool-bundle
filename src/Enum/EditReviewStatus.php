@@ -4,26 +4,6 @@ namespace Pixiekat\HMFPSearchToolBundle\Enum;
 
 /**
  * Where an edit sits in review — AFTER it has already gone live.
- *
- * ── Publish first, review after ────────────────────────────────────────────
- * An edit is visible the moment it is made. Review is a check on something
- * already published, not a gate in front of it. That is a deliberate product
- * decision: a physician correcting their own clinical interests should not wait
- * on an administrator, and the review queue exists to catch the rare abuse
- * rather than to approve the common case.
- *
- * It also means REJECTING is a revert, not a refusal — the change was live and
- * has to be taken back down.
- *
- * ── The resolution rule ────────────────────────────────────────────────────
- *     latest edit for this field that is NOT rejected
- *
- * That one rule gives correct revert behaviour for free. Reject the third edit
- * and the second becomes current again automatically, because it is now the
- * latest non-rejected one. No bookkeeping status has to be maintained, and
- * nothing has to be un-marked — which is why there is no "superseded" case
- * here: being superseded just means not being the latest, which the query
- * already knows.
  */
 enum EditReviewStatus: string {
 

@@ -2,6 +2,8 @@
 declare(strict_types=1);
 namespace Pixiekat\HMFPSearchToolBundle\Enum;
 
+use Pixiekat\HMFPSearchToolBundle\Enum\PhysicianVocabulary;
+
 /**
  * The physician fields that may be changed through the override layer.
  *
@@ -13,22 +15,11 @@ enum EditableField: string {
 
   /**
    * Free-text biography.
-   *
-   * The simplest possible case and the one wired end to end first: one field,
-   * one string, one diff.
    */
   case Bio = 'bio';
 
   /**
    * Clinical interests.
-   *
-   * NOT a scalar — a set of taxonomy terms. An edit records the PROPOSAL here
-   * (as a list of term ids), and on approval a projection writes the resulting
-   * links into physician_terms, which is what search reads. See
-   * PhysicianEditManager for why the read model is projected rather than
-   * resolved at query time: "clinical interests" is a required search filter,
-   * and a required filter over a to-many cannot be answered by parsing text
-   * blobs per row.
    */
   case ClinicalInterests = 'clinical_interests';
 

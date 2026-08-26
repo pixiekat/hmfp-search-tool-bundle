@@ -89,10 +89,13 @@ final class SearchController extends AbstractController {
     private readonly Repository\DepartmentRepository $departments,
     private readonly Repository\FacilityRepository $facilities,
     private readonly PhysicianTaxonomyManager $taxonomy,
+    private readonly Repository\SearchEventRepository $searchEvents,
     private readonly CacheInterface $cache,
   ) {  }
 
   #[IsGranted(Interfaces\Security\Voter\SearchVoterInterface::PERMISSION_CAN_ACCESS_SEARCH)]
+  #[Route('/', name: 'hmfp_search_tool_home', methods: ['GET'])]
+  #[Route('<front>', name: 'hmfp_search_tool_home_front', methods: ['GET'])]
   #[Route('/search', name: 'hmfp_search_tool_search', methods: ['GET'])]
   public function search(Request $request): Response {
     // get the initial search term from the request and clean it.
@@ -114,17 +117,11 @@ final class SearchController extends AbstractController {
     $credential = $this->queryString($request, 'credential') ?: null;
     $page       = $this->queryId($request, 'page') ?? 1;
 
-    // ── Proximity ───────────────────────────────────────────────────────────
-    // The centre point is a FACILITY the visitor picks, not a typed address.
-    // That is a deliberate limit of this phase: turning "02215" or a street
-    // address into coordinates needs either a ZIP-centroid dataset or a
-    // geocoding service, and neither exists here yet. Anchoring on a known site
-    // needs no external data and answers the question most people are actually
-    // asking — "who is near the hospital I already go to?"
-    //
-    // Resolving to facility ids happens HERE rather than in the physician
-    // query, because it is a question about twenty rows and belongs to
-    // FacilityRepository. What reaches search() is an ordinary id list.
+    // Proximity:
+    // The user can ask for a radius search around a facility. The facility is the center
+    // point, and the radius is in miles. The controller resolves the facility to
+    // coordinates and then finds all facilities within that radius. Those facilities
+    // are then used to filter the physician search results.
     $nearFacilityId = $this->queryId($request, 'near');
     $radius         = $this->queryId($request, 'radius') ?? self::DEFAULT_RADIUS_MILES;
 
@@ -185,14 +182,24 @@ final class SearchController extends AbstractController {
         'credential'  => $credential,
         'resultCount' => $total,
         'page'        => $page,
-      ]);
+      ], \Psr\Log\LogLevel::DEBUG);
+
+      // Analytics: Track a search event for analytics purposes. This is a seperate
+      // call from the log.
+      if ($page === 1) {
+        $this->searchEvents->record(
+          term: $term === '' ? null : mb_strtolower($term),
+          resultCount: $total,
+          filtersUsed: $this->appliedFilterKeys($taxonomyFilters, $credential, $nearFacilityIds),
+          matchedTermId: $found['exactMatch']['id'] ?? null,
+          matchedTermName: $found['exactMatch']['name'] ?? null,
+          matchedVocabulary: $found['exactMatch']['vocabulary'] ?? null,
+        );
+      }
     }
 
     return $this->render('@HMFPSearchTool/search/search.html.twig', [
-      // What was asked. The individual ids are also exposed under their own
-      // names so a template can mark the right <option> selected without
-      // digging into the array — a convenience that costs nothing and keeps
-      // the Twig readable.
+      // results
       'term'         => $term,
       'filters'      => $taxonomyFilters,
       'departmentId' => $taxonomyFilters['department'] ?? null,
@@ -204,14 +211,13 @@ final class SearchController extends AbstractController {
         + ($credential !== null ? 1 : 0)
         + ($nearFacilityIds !== null ? 1 : 0),
 
-      // Proximity
+      // proximity
       'nearFacilityId' => $nearFacilityId,
       'nearFacility'   => $nearFacility,
       'radius'         => $radius,
       'radiusOptions'  => self::RADIUS_OPTIONS,
       'nearbyCount'    => count($nearResults),
-      // Only facilities that have been placed can anchor a distance search.
-      // Offering the rest would produce a control that silently does nothing.
+      // only facilities that have been placed can anchor a distance search.
       'placedFacilities' => $this->facilities->findPlaced(),
 
       // What came back
@@ -222,13 +228,8 @@ final class SearchController extends AbstractController {
       'pages'      => $pages,
       'perPage'    => self::PER_PAGE,
 
-      // Vocabularies for the filter controls — see cachedCredentials() below
+      // vocabularies for the filter controls — see cachedCredentials() below
       // for why only one of these three is cached.
-      //
-      // findBy() with an explicit sort rather than a custom repository method:
-      // a dropdown needs the rows in alphabetical order and nothing else, and
-      // depending on a hand-written finder here would break the search page
-      // any time one was renamed or removed.
       'departmentOptions' => $this->departments->findBy([], ['name' => 'ASC']),
       'facilityOptions'   => $this->facilities->findBy([], ['name' => 'ASC']),
       'credentialOptions' => $this->cachedCredentials(),
@@ -237,16 +238,6 @@ final class SearchController extends AbstractController {
       // must be narrowed to one vocabulary — vocabulary_terms holds every
       // taxonomy at once, and an unfiltered read would offer languages and
       // conditions in the specialty dropdown.
-      // One structure covering every shared-taxonomy filter, rather than a
-      // pair of variables per vocabulary. The template loops over it, so
-      // adding a vocabulary is an enum case and nothing else — no controller
-      // change, no template change.
-      //
-      // Vocabularies with no terms are dropped here rather than in Twig: an
-      // empty <select> reads as broken, and Condition, Procedure and Board
-      // certification have no source in the extract yet. They will appear by
-      // themselves the moment terms exist, whether from an import or from
-      // someone using the taxonomy admin.
       'taxonomyFilterGroups' => $this->taxonomyFilterGroups($taxonomyFilters),
 
       // Seeds the <datalist> so native autocomplete works with NO JavaScript at
@@ -258,22 +249,6 @@ final class SearchController extends AbstractController {
 
   /**
    * Suggestions for the search box.
-   *
-   * ── Same repository method the page uses ──────────────────────────────────
-   * PhysicianRepository::suggest() draws from the same names, specialties and
-   * interests that free-text search is scored against. A typeahead backed by a
-   * different notion of relevance eventually offers something the search cannot
-   * find, and one bad suggestion costs more trust than ten good ones earn.
-   *
-   * ── Why this returns strings and not links ────────────────────────────────
-   * Picking a suggestion fills the search box; it does not navigate. That keeps
-   * the enhanced flow identical to the unenhanced one — you still press Search,
-   * still land on a normal results URL — and it is what allows the whole thing
-   * to be built on <datalist>, where the browser owns the interaction.
-   *
-   * Not cached: the response varies per keystroke, so a cache would hold
-   * thousands of one-shot entries. The query itself is a couple of indexed
-   * LIKEs over small tables.
    */
   #[IsGranted(Interfaces\Security\Voter\SearchVoterInterface::PERMISSION_CAN_ACCESS_SEARCH)]
   #[Route('/search/suggest', name: 'hmfp_search_tool_search_suggest', methods: ['GET'])]
@@ -291,7 +266,7 @@ final class SearchController extends AbstractController {
       'suggestions' => $suggestions,
     ]);
 
-    // Private, because the route is behind authentication — a shared cache must
+    // private, because the route is behind authentication — a shared cache must
     // not hand one user's suggestions to another. Short-lived because the
     // underlying vocabulary changes only on import or approval, so a few
     // seconds of staleness costs nothing while absorbing the burst of requests
@@ -300,6 +275,31 @@ final class SearchController extends AbstractController {
     $response->setMaxAge(30);
 
     return $response;
+  }
+
+  /**
+   * Which filters a search actually applied, as plain keys.
+   *
+   * Names rather than a count, because the question worth asking is "is anyone
+   * using the language filter?" — which a total cannot answer.
+   *
+   * @param array<string, int|null> $taxonomyFilters
+   * @param list<int>|null          $nearFacilityIds
+   *
+   * @return list<string>
+   */
+  private function appliedFilterKeys(array $taxonomyFilters, ?string $credential, ?array $nearFacilityIds): array {
+    $keys = array_keys(array_filter($taxonomyFilters, static fn (?int $id): bool => $id !== null));
+
+    if ($credential !== null) {
+      $keys[] = 'credential';
+    }
+
+    if ($nearFacilityIds !== null) {
+      $keys[] = 'near';
+    }
+
+    return array_values($keys);
   }
 
   /**

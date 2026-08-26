@@ -4,8 +4,6 @@ namespace Pixiekat\HMFPSearchToolBundle\Controller;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Pixiekat\HMFPSearchToolBundle\Entity;
-use Pixiekat\HMFPSearchToolBundle\Enum\EditableField;
-use Pixiekat\HMFPSearchToolBundle\Enum\PhysicianVocabulary;
 use Pixiekat\HMFPSearchToolBundle\Repository;
 use Pixiekat\HMFPSearchToolBundle\Services\PhysicianEditManager;
 use Pixiekat\HMFPSearchToolBundle\Services\PhysicianTaxonomyManager;
@@ -18,28 +16,10 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 /**
- * The review queue for physician-proposed edits.
+ * A Controller to handle all functionality around reviewing edits to physician records.
  *
- * ── Review happens AFTER publication ────────────────────────────────────────
- * Everything in this queue is already live. Confirming records that a human
- * checked it; rejecting takes it back down, restoring whatever was current
- * before it. The queue is a safety net over published content, not a gate in
- * front of it — so an empty queue means "nothing new to check", never "nothing
- * has changed".
- *
- * ── What a review screen has to do ──────────────────────────────────────────
- * Show the CHANGE, not the proposal. A queue that lists "Peter Hsu wants to
- * change their bio" and nothing else forces the reviewer to go and look up the
- * current value themselves, which is how reviews stop happening properly. Every
- * row here shows current-versus-proposed, and for taxonomy fields it works out
- * which terms are actually being added and removed rather than printing two
- * lists side by side and leaving the diffing to a human.
- *
- * ── Decisions are POST, everything else is GET ──────────────────────────────
- * Approving and rejecting change state, so they are POST forms with CSRF
- * tokens, following the same pattern as the delete actions elsewhere in this
- * admin. The queue itself is a GET page and is safe to refresh, bookmark and
- * share.
+ * Edits are proposed by physicians themselves, and are live immediately. This controller
+ * is for reviewing those edits after the fact.
  */
 final class PhysicianEditController extends AbstractController {
 
@@ -206,12 +186,6 @@ final class PhysicianEditController extends AbstractController {
    *   proposed the value if approved
    *   added    terms that would appear    (terms only)
    *   removed  terms that would disappear (terms only)
-   *
-   * ── Why the diff is computed and not left to the eye ──────────────────────
-   * A physician proposing eight clinical interests where seven are unchanged is
-   * asking for one addition. Printing both lists makes the reviewer find that
-   * difference themselves, every time, and they will eventually stop looking
-   * properly — which defeats the point of a review step.
    *
    * @return array{type: string, current: mixed, proposed: mixed, added: list<string>, removed: list<string>}
    */

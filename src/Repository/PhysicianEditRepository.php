@@ -28,21 +28,6 @@ class PhysicianEditRepository extends ServiceEntityRepository {
   /**
    * The live overrides for a set of physicians, in ONE query.
    *
-   * ── Why this takes a list and not a single physician ──────────────────────
-   * Because the caller is usually rendering a page of them. A per-physician
-   * resolver looks tidier and turns a 20-result page into 20 extra queries —
-   * the same N+1 that the taxonomy display already had to be rescued from.
-   * Making the batch form the primary API means the cheap path is the obvious
-   * one.
-   *
-   * ── Why the ordering matters ──────────────────────────────────────────────
-   * Every non-rejected edit for a field is returned, not just the newest, and
-   * ordering oldest-first lets later rows overwrite earlier ones in the map so
-   * the NEWEST wins. That is the whole resolution rule, and doing it this way
-   * is what makes rejection a revert for free: reject the newest and the one
-   * before it is simply the latest non-rejected edit next time round, with no
-   * status anywhere needing to be un-set.
-   *
    * @param list<int> $physicianIds
    *
    * @return array<int, array<string, string|null>> physician id → field value → new value.

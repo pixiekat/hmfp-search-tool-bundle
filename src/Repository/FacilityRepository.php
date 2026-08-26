@@ -64,27 +64,6 @@ class FacilityRepository extends ServiceEntityRepository {
   /**
    * Facilities within a radius of a point, nearest first.
    *
-   * ── Why this is done in PHP and not in SQL ────────────────────────────────
-   * The textbook answer is a POINT column, a SPATIAL index and
-   * ST_Distance_Sphere — and it is the wrong answer here. All of that machinery
-   * exists to avoid scanning a large table; this one holds TWENTY rows.
-   * Loading all twenty and computing exact distances costs microseconds, needs
-   * no spatial types, and can be read and tested by anyone.
-   *
-   * It also keeps the maths honest: an index-assisted spatial query usually
-   * needs a bounding-box pre-filter, and a naive bounding box in degrees is
-   * wrong at anything other than the equator, because a degree of longitude
-   * shrinks as you move away from it. Skipping the optimisation skips the bug.
-   *
-   * The trigger for revisiting is size, not principle: at a few thousand sites
-   * this becomes worth indexing.
-   *
-   * ── Haversine, not Pythagoras ─────────────────────────────────────────────
-   * Treating latitude and longitude as a flat grid is out by several percent
-   * over the distances a patient cares about, and gets worse with latitude. At
-   * Boston's 42°N a degree of longitude is about 74% the length of a degree of
-   * latitude, so flat-earth distance overstates east-west separation badly.
-   *
    * @return list<array{facility: Entity\Facility, miles: float}> nearest first.
    */
   public function near(float $latitude, float $longitude, float $radiusMiles): array {

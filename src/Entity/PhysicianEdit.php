@@ -9,53 +9,10 @@ use Pixiekat\SymfonyHelpers\Traits\Entity as PixieTraits;
 
 /**
  * One proposed change to one field of one physician.
- *
- * ── The override layer ─────────────────────────────────────────────────────
- * The imported record is never modified. Edits accumulate here instead, and a
- * read resolves as:
- *
- *     resolved(field) = newValue of the latest NON-REJECTED edit for that field
- *                       ?? the imported value on Physician
- *
- * Three properties fall out of that, all of which are the point:
- *
- *   · The importer needs no special cases. It stays fully file-authoritative
- *     over the columns it owns, because edits are not in those columns.
- *   · Reverting is deleting nothing — mark the live edit Superseded, or add a
- *     newer one, and the imported value shows through again.
- *   · The history is free. Every proposal ever made is still here, with who
- *     made it and who decided.
- *
- * ── Edits publish immediately ──────────────────────────────────────────────
- * A new edit is Unreviewed, which is a LIVE status: it is visible at once, and
- * review is a check on something already published. Rejecting is therefore a
- * revert. See EditReviewStatus.
- *
- * ── Append-only means the VALUE is immutable ───────────────────────────────
- * There is deliberately no setter for $newValue. Changing your mind produces a
- * NEW edit, which becomes the latest and therefore the current one; the older
- * edit stays exactly as it was. Editing an edit in place would destroy the
- * audit trail this table exists to keep, and would make "what was actually
- * published at the time?" unanswerable.
- *
- * Status is the one mutable part, because a review is by definition a later
- * decision about an existing proposal.
- *
- * ── Both parties are real accounts, and both keep a label ──────────────────
- * Editors and reviewers are the same population: rows in `users`, signing in
- * with a password today and through Azure OAuth later. So both are foreign
- * keys.
- *
- * Each is paired with a snapshot label, mirroring the audit log's
- * actor/actorLabel. The key answers "who is this, now?"; the label answers "who
- * was this, then?" — and a review history has to answer the second even after
- * an account is deleted or an address changes. It also leaves room for an
- * author with no local account at all, which is what an edit pushed from
- * upstream would be.
  */
 #[ORM\Entity(repositoryClass: \Pixiekat\HMFPSearchToolBundle\Repository\PhysicianEditRepository::class)]
 #[ORM\Table(name: 'physician_edits')]
-/*
+/**
  * The resolver's query is "latest LIVE edit for this physician and field", so
  * the index matches that access path exactly, in that column order. Without it
  * every profile view scans the table — which grows forever, since nothing here
@@ -96,25 +53,8 @@ class PhysicianEdit {
    * distinguishable from "no edit exists". Text rather than a narrower type
    * because it has to hold a bio.
    *
-   * ── For taxonomy fields it holds a JSON array of NAMES, not ids ──────────
+   * For taxonomy fields it holds a JSON array of NAMES, not ids
    * `["Heart failure", "Echocardiography"]`.
-   *
-   * Names rather than term ids, for three reasons:
-   *
-   *   1. A reviewer reads this column. `["Heart failure"]` can be judged at a
-   *      glance; `[17, 42]` cannot, and a review workflow whose queue is
-   *      unreadable will not be used properly.
-   *   2. Ids are not stable against the taxonomy being tidied. A merged or
-   *      re-created term silently changes what a historical edit meant, which
-   *      is exactly the kind of quiet rewriting an audit table must not do.
-   *   3. Physicians propose interests in their own words. Resolving a name to
-   *      a term — creating it if new — happens at APPROVAL, which is the point
-   *      at which a human has actually agreed the term should exist.
-   *
-   * The cost is that the vocabulary can grow through approvals. That is the
-   * intended control: the reviewer is the gate, not a fixed list.
-   *
-   * No setter — see the class docblock on append-only.
    */
   #[ORM\Column(name: 'new_value', type: 'text', nullable: true)]
   private ?string $newValue;

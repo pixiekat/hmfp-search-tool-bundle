@@ -13,15 +13,11 @@ enum PhysicianVocabulary: string {
 
   /**
    * Clinical specialty, e.g. "Internal Medicine", "Radiology-Diagnostic Radiology".
-   *
-   * Hierarchical in principle — Term::$parent supports sub-specialties — though
-   * the demographics extract supplies a flat list, so imported terms are all
-   * roots until something richer arrives.
    */
   case Specialty = 'specialty';
 
   /**
-   * Languages a provider practises in, beyond English.
+   * Languages a provider practices in, beyond English.
    */
   case Language = 'language';
 
@@ -48,10 +44,6 @@ enum PhysicianVocabulary: string {
 
   /**
    * The human-readable name for the Vocabulary row and for form labels.
-   *
-   * Kept beside the machine name rather than in a translation file for now, so
-   * there is exactly one place to look. Move to translations when the app needs
-   * a second language — the enum case, not this string, is what code depends on.
    */
   public function label(): string {
     return match ($this) {
@@ -103,16 +95,6 @@ enum PhysicianVocabulary: string {
 
   /**
    * Whether a free-text query is matched against this vocabulary's terms.
-   *
-   * The specification defines free-text search as covering "name, condition,
-   * procedure" — and specialty and clinical interest are in the ranking tiers,
-   * so those are searchable too.
-   *
-   * Language and board certification are deliberately NOT. They are filters:
-   * someone typing "Spanish" wants a Spanish-speaking provider, not every
-   * physician who happens to list it, and folding them into keyword matching
-   * would flood a name search with hundreds of weak hits. A filter answers
-   * "narrow to this"; free text answers "find me something like this".
    */
   public function isFreeTextSearchable(): bool {
     return match ($this) {
@@ -123,11 +105,6 @@ enum PhysicianVocabulary: string {
 
   /**
    * The wording for the "no filter applied" option on a select.
-   *
-   * "All specialties" reads naturally; "All languages" does not — someone
-   * filtering by language wants ANY provider who speaks it, not all of them.
-   * Small thing, but the alternative is a generic string that reads awkwardly
-   * on half the controls.
    */
   public function anyOptionLabel(): string {
     return match ($this) {
@@ -142,10 +119,6 @@ enum PhysicianVocabulary: string {
 
   /**
    * The request parameter and filter key for this vocabulary.
-   *
-   * Identical to the enum's value by design — one name for one concept, so a
-   * URL reads `?clinical_interest=12` and the repository's filter key is
-   * `clinical_interest` with nothing in between to keep in step.
    */
   public function filterKey(): string {
     return $this->value;

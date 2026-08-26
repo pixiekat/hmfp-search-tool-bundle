@@ -12,29 +12,6 @@ use Pixiekat\SymfonyHelpers\Services\AuditLogManager;
 
 /**
  * Proposes, reviews and resolves physician edits.
- *
- * ── The one rule ───────────────────────────────────────────────────────────
- *     resolved(field) = latest LIVE edit ?? imported value
- *
- * Everything else here serves that. The imported record is never written to,
- * so the importer keeps its file-authoritative behaviour with no exceptions
- * carved out for editable fields — the two systems write to different tables
- * and cannot fight.
- *
- * ── Scalars resolve; taxonomies project ────────────────────────────────────
- * A scalar override (bio) is resolved at READ time, which costs one batched
- * query per page and is always exactly consistent with the edit log.
- *
- * A taxonomy override (clinical interests) cannot work that way. It is a
- * REQUIRED search filter, and a required filter over a to-many has to be a
- * JOIN — you cannot answer "which physicians have this interest?" by parsing a
- * text column on every row. So an approved taxonomy edit is PROJECTED into
- * physician_terms, and search reads the projection.
- *
- * The cost of projecting is that the read model is derived state and can drift
- * if a projection fails part-way. The mitigation is the same one the importer
- * uses: make it idempotent and rebuildable from the edit log, so re-running is
- * always safe and always converges.
  */
 final class PhysicianEditManager {
 
@@ -144,16 +121,6 @@ final class PhysicianEditManager {
   /**
    * Confirms an edit that is already live.
    *
-   * ── Confirming changes nothing the public can see ─────────────────────────
-   * The edit has been published since the moment it was made. There is no value
-   * to apply and nothing to project; this records that a human has now looked
-   * at it, which is what clears it from the review queue.
-   *
-   * Nor is there any superseding to do. The resolver takes the latest
-   * non-rejected edit, so an older edit stops being current simply by no longer
-   * being the latest — no status has to be maintained to say so, and none has
-   * to be un-set if this one is later rejected.
-   *
    * Does not flush; the caller decides the transaction boundary.
    */
   public function confirm(Entity\PhysicianEdit $edit, Entity\User $reviewer): void {
@@ -237,29 +204,6 @@ final class PhysicianEditManager {
   /**
    * Rewrites a physician's taxonomy links to match their latest live edit.
    *
-   * ── Why the read model is projected and not resolved ──────────────────────
-   * Clinical interests are a REQUIRED search filter. A required filter over a
-   * to-many has to be answerable by a JOIN — "which physicians have this
-   * interest?" cannot be answered by decoding a JSON column on every one of
-   * 10,933 rows. So the approved state is written into physician_terms, and
-   * search reads that, exactly as it reads specialties and languages.
-   *
-   * ── Idempotent, and rebuildable from the edit log ─────────────────────────
-   * This computes the FULL desired set and diffs it against what is stored, so
-   * running it twice changes nothing and running it after a failure converges.
-   * Nothing here depends on what the previous run did — the edit log is the
-   * only input — which is what makes `hmfp:projections:rebuild` always safe.
-   *
-   * That matters because a projection is derived state and derived state
-   * drifts: a half-finished request, a restored backup, a hand-edited row. The
-   * answer to drift is not to prevent it but to make correcting it a single
-   * idempotent command.
-   *
-   * ── No live edit means no interests ───────────────────────────────────────
-   * An absent or superseded edit projects to an EMPTY set, which removes every
-   * link. That is what makes revert() work: supersede the live edit, re-project,
-   * and the interests disappear without anything being deleted from the log.
-   *
    * Does not flush.
    *
    * @return array{added: int, removed: int}
@@ -315,7 +259,7 @@ final class PhysicianEditManager {
       $desiredTerms[$key]       = $term;
     }
 
-    // ── Current: this physician's links in THIS vocabulary only ────────────
+    // Current: this physician's links in THIS vocabulary only
     // Scoped, because physician_terms holds every taxonomy at once. Diffing
     // against the unscoped collection would delete their specialties and
     // languages the first time this ran.

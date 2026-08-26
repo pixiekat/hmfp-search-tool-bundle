@@ -9,12 +9,6 @@ use Pixiekat\SymfonyHelpers\Entity as HelperEntity;
 
 /**
  * HMFP's semantics over the helpers bundle's generic taxonomy.
- *
- * This class gives us a place to put HMFP's opinions about the shared taxonomy,
- * and to enforce them in one place. It is the only place that should know about
- * the vocabularies HMFP uses and what they mean, and the only place that
- * should create or read terms in those vocabularies. The entity is generic
- * and has no opinion; this service is HMFP's opinion.
  */
 final class PhysicianTaxonomyManager {
 

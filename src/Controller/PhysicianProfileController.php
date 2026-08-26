@@ -17,34 +17,12 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 /**
- * Where a physician proposes changes to their own profile.
- *
- * ── Any signed-in user may edit any physician ──────────────────────────────
- * Deliberately not restricted to "your own record". Directory maintenance is
- * collaborative — a practice manager updating a colleague's interests is the
- * common case, not an attack — and every change is attributed, published with
- * an audit trail, and surfaced in the review queue. Verification happens THERE,
- * after the fact, rather than by locking the form down beforehand.
- *
- * The trade this accepts: a signed-in user can change any physician's bio, and
- * it is live immediately. That is only tolerable because three things are true
- * together — every edit names its author, every edit is reviewable, and every
- * edit is revertible without data loss. Remove any one of them and this becomes
- * the wrong design.
- *
- * ── Changes are live at once ────────────────────────────────────────────────
- * A submission publishes immediately and is flagged for review. The page says
- * so, because someone editing a colleague's profile should know it is already
- * visible rather than assuming a moderator will catch a mistake first.
+ * A controller for viewing and editing physician profiles.
  */
 final class PhysicianProfileController extends AbstractController {
 
   /**
    * Separator for the clinical interests field.
-   *
-   * Newline-separated rather than comma, because clinical interests contain
-   * commas — "Cardiology, non-invasive" is one interest. Asking someone to
-   * escape a comma in a text box is asking them to get it wrong.
    */
   private const INTEREST_SEPARATOR = "\n";
 
@@ -75,7 +53,6 @@ final class PhysicianProfileController extends AbstractController {
 
     $proposed = 0;
 
-    // ── Bio ────────────────────────────────────────────────────────────────
     // Compared against the RESOLVED value, not the imported one: if a previous
     // edit is already live, that is what the physician is actually changing.
     // Submitting the form unchanged should propose nothing, otherwise the
@@ -93,7 +70,6 @@ final class PhysicianProfileController extends AbstractController {
       $proposed++;
     }
 
-    // ── Clinical interests ─────────────────────────────────────────────────
     $interests = $this->splitInterests((string) ($request->request->all()['interests'] ?? ''));
     $current   = array_map(
       static fn ($term): string => (string) $term->getName(),
