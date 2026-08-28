@@ -420,17 +420,17 @@
         #}
         <nav class="pagination" aria-label="Search results pages">
           {% if page > 1 %}
-            <a href="{{ path('hmfp_search_tool_search', app.request.query.all|merge({page: page - 1})) }}" rel="prev">← Previous</a>
+            <a href="{{ path('hmfp_search_tool_search', app.request.query.all|merge({page: page - 1})) }}" rel="prev">&laquo; Previous</a>
           {% else %}
-            <span class="muted" aria-hidden="true">← Previous</span>
+            <span class="muted" aria-hidden="true">&laquo; Previous</span>
           {% endif %}
 
           <span>Page {{ page }} of {{ pages }}</span>
 
           {% if page < pages %}
-            <a href="{{ path('hmfp_search_tool_search', app.request.query.all|merge({page: page + 1})) }}" rel="next">Next →</a>
+            <a href="{{ path('hmfp_search_tool_search', app.request.query.all|merge({page: page + 1})) }}" rel="next">Next &raquo;</a>
           {% else %}
-            <span class="muted" aria-hidden="true">Next →</span>
+            <span class="muted" aria-hidden="true">Next &raquo;</span>
           {% endif %}
         </nav>
       {% endif %}

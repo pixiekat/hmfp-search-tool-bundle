@@ -17,4 +17,15 @@ interface PhysicianVoterInterface {
    */
   public const PERMISSION_CAN_APPROVE_PHYSICIAN_EDITS = 'can_approve_physician_edits';
 
+  /**
+   * View all physician edits. This allows the user to view a historical list of approved and live edits
+   * made to a physician profile.
+   */
+  public const PERMISSION_CAN_VIEW_PHYSICIAN_EDITS = 'can_view_physician_edits';
+
+  /**
+   * View all physician edits, including rejected edits. This allows the user to view a historical list of approved, rejected, and live edits made to a physician profile.
+   */
+  public const PERMISSION_CAN_VIEW_ALL_PHYSICIAN_EDITS = 'can_view_all_physician_edits';
+
 }

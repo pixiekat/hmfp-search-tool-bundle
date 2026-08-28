@@ -38,11 +38,12 @@
     {% endif %}
 
     <div class="actions">
-      {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\PhysicianVoterInterface::PERMISSION_CAN_EDIT_PHYSICIAN'), physician) %}
-        <a class="button" href="{{ path('hmfp_search_tool_profile_edit', {'id': physician.id}) }}" class="button">Edit</a>
-      {% endif %}
       {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\SearchVoterInterface::PERMISSION_CAN_ACCESS_SEARCH'), physician) %}
-        <a class="button" href="{{ path('hmfp_search_tool_home_front', {'id': physician.id}) }}">Return to Search</a>
+        <a class="button" href="#" onclick="window.history.back(); return false;">&laquo; Back to Search Results</a>
+        <a class="button" href="{{ path('hmfp_search_tool_home_front') }}">Start a new Search</a>
+      {% endif %}
+      {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\PhysicianVoterInterface::PERMISSION_CAN_EDIT_PHYSICIAN'), physician) %}
+        <a class="button" href="{{ path('hmfp_search_tool_profile_edit', {'id': physician.id}) }}" class="button">Propose Edit</a>
       {% endif %}
     </div>
   </div>

@@ -95,7 +95,8 @@ final class SearchController extends AbstractController {
 
   #[IsGranted(Interfaces\Security\Voter\SearchVoterInterface::PERMISSION_CAN_ACCESS_SEARCH)]
   #[Route('/', name: 'hmfp_search_tool_home', methods: ['GET'])]
-  #[Route('<front>', name: 'hmfp_search_tool_home_front', methods: ['GET'])]
+  #[Route('/', name: '<front>', methods: ['GET'])]
+  #[Route('/', name: 'hmfp_search_tool_home_front', methods: ['GET'])]
   #[Route('/search', name: 'hmfp_search_tool_search', methods: ['GET'])]
   public function search(Request $request): Response {
     // get the initial search term from the request and clean it.

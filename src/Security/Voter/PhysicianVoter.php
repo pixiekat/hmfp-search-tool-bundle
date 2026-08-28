@@ -33,6 +33,8 @@ class PhysicianVoter extends PixieHelperSecurity\Voter\BaseVoter implements Inte
 
     return match($attribute) {
         self::PERMISSION_CAN_EDIT_PHYSICIAN => $this->security->isGranted('ROLE_USER'),
+        self::PERMISSION_CAN_VIEW_PHYSICIAN_EDITS => $this->security->isGranted('ROLE_USER'),
+        self::PERMISSION_CAN_VIEW_ALL_PHYSICIAN_EDITS => $this->security->isGranted('ROLE_ADMIN'),
         self::PERMISSION_CAN_APPROVE_PHYSICIAN_EDITS => $this->security->isGranted('ROLE_ADMIN'),
         default => false,
     };
