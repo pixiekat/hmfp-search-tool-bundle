@@ -36,6 +36,38 @@
   }
 ]) %}
 
+{# If current user does not have the ROLE_ADMIN role, then filter out Content, Taxonomy, Users & Access, Community, and System. #}
+{% if app.user %}
+  {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\AdminVoterInterface::PERMISSION_CAN_ACCESS_ADMIN')) == false %}
+    {% for section in admin_nav_sections %}
+      {% if section.label in ['Content', 'Taxonomy', 'Users & Access', 'Community', 'System', 'HMFP Search Tool'] %}
+        {% set admin_nav_sections = admin_nav_sections|filter(s => s != section) %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\AdminVoterInterface::PERMISSION_CAN_ACCESS_REPORTS')) == false %}
+    {% for section in admin_nav_sections %}
+      {% if section.label == 'Search Statistics' %}
+        {% set admin_nav_sections = admin_nav_sections|filter(s => s != section) %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\AdminVoterInterface::PERMISSION_CAN_MANAGE_USERS')) == false %}
+    {% for section in admin_nav_sections %}
+      {% if section.label == 'Users & Access' %}
+        {% set admin_nav_sections = admin_nav_sections|filter(s => s != section) %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\AdminVoterInterface::PERMISSION_CAN_APPROVE_EDITS')) == false %}
+    {% for section in admin_nav_sections %}
+      {% if section.label == 'Physician Edits' %}
+        {% set admin_nav_sections = admin_nav_sections|filter(s => s != section) %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+{% endif %}
+
 {% block admin_brand %}HMFP Search Tool{% endblock %}
 
 {% block admin_header_links %}

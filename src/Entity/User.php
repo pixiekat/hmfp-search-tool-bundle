@@ -81,4 +81,15 @@ class User implements HelpersUserInterface, UserInterface, PasswordAuthenticated
 
     return $roles;
   }
+
+  public function isSysAdmin(): bool {
+    $sysAdminRoles = [
+      HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_SYSADMIN,
+    ];
+    return in_array(HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_SYSADMIN, $this->getRoles());
+  }
+
+  public function isFirstUser(): bool {
+    return $this->getId() === 1;
+  }
 }

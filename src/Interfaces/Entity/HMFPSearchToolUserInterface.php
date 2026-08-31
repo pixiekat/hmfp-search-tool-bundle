@@ -27,7 +27,7 @@ interface HMFPSearchToolUserInterface {
   /**
    * The role for the content admin.
    */
-  public const ROLE_CONTENT_ADMIN = 'CONTENT_ADMIN';
+  public const ROLE_CONTENT_ADMIN = 'ROLE_CONTENT_ADMIN';
 
   /**
    * The label for the content admin role.
@@ -37,7 +37,7 @@ interface HMFPSearchToolUserInterface {
   /**
    * The role for the data steward.
    */
-  public const ROLE_DATA_STEWARD = 'DATA_STEWARD';
+  public const ROLE_DATA_STEWARD = 'ROLE_DATA_STEWARD';
 
   /**
    * The label for the data steward role.
@@ -47,7 +47,7 @@ interface HMFPSearchToolUserInterface {
   /**
    * The role for the department editor.
    */
-  public const ROLE_DEPARTMENT_EDITOR = 'DEPARTMENT_EDITOR';
+  public const ROLE_DEPARTMENT_EDITOR = 'ROLE_DEPARTMENT_EDITOR';
 
   /**
    * The label for the department editor role.
@@ -57,7 +57,7 @@ interface HMFPSearchToolUserInterface {
   /**
    * The role for the analytics viewer.
    */
-  public const ROLE_ANALYTICS_VIEWER = 'ANALYTICS_VIEWER';
+  public const ROLE_ANALYTICS_VIEWER = 'ROLE_ANALYTICS_VIEWER';
 
   /**
    * The label for the analytics viewer role.
