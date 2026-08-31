@@ -77,7 +77,7 @@ final class AdminController extends AbstractController {
 
       // obviously we're adding a user so we always have a password.
       // hash it and set the password on the user entity.
-      $plainPassword = (string)$form->get('password')->getData();
+      $plainPassword = (string)$form->get('plainPassword')->getData();
       $hashedPassword = $this->passwordHasher->hashPassword($user, $plainPassword);
       $user->setPassword($hashedPassword);
 
