@@ -409,7 +409,7 @@ Form tokens live here, beside the only rules that use them, rather than in the m
   /* Input borders need 3:1 against the page (WCAG 1.4.11, non-text contrast)
      so people can see where the box IS. --hmfp-border is ~1.4:1 on white:
      fine for decorative dividers, too faint for a field you have to find. */
-  --hmfp-input-border: #767680;   /* 4.5:1 on white */
+  --hmfp-input-border: #767680;   /* 4.49:1 on white; 3:1 is the minimum */
   --hmfp-success: #15803d;        /* 5.0:1 on white */
   --hmfp-success-bg: #effaf3;
   --hmfp-error: #b91c1c;          /* 6.5:1 on white */
