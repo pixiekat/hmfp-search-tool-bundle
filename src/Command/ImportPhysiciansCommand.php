@@ -155,6 +155,10 @@ final class ImportPhysiciansCommand extends Command {
     'facility_name' => 'facility_name',
     'specialty'     => 'specialty',
     'languages'     => 'languages',
+    'npi'           => 'npi',
+    'gender'        => 'gender',
+    'phone'         => 'preferred_phone_number',
+    'preferred_full_name' => 'preferred_full_name'
   ];
 
   /**
@@ -1088,6 +1092,10 @@ final class ImportPhysiciansCommand extends Command {
         $processed++;
 
         $legalName   = $this->buildLegalName($record);
+        $npi = $this->nullIfBlank($record['npi']);
+        $gender = $this->nullIfBlank($record['gender']);
+        $phone = $this->nullIfBlank($record['phone']);
+        $preferred_full_name = $this->nullIfBlank($record['preferred_full_name']);
         $credentials = $record['degree'];
 
         // -- Resolve the desired ids for each association --------------------
@@ -1144,6 +1152,10 @@ final class ImportPhysiciansCommand extends Command {
             $physician->setCredId($credId);
             $physician->setLegalName($legalName);
             $physician->setCredentials($credentials);
+            $physician->setNpi($npi);
+            $physician->setGender($gender);
+            $physician->setPhone($phone);
+            $physician->setPreferredFullName($preferred_full_name);
             // Stamped inline: a brand-new entity is already being written, so
             // this costs nothing and keeps it out of the bulk update.
             $physician->setLastSeenInImportAt($runStartedAt);
@@ -1195,7 +1207,11 @@ final class ImportPhysiciansCommand extends Command {
 
           $fieldsChanged = $adopted
             || $match['legalName'] !== $legalName
-            || $match['credentials'] !== $credentials;
+            || $match['credentials'] !== $credentials
+            || $match['npi'] !== $npi
+            || $match['gender'] !== $gender
+            || $match['phone'] !== $phone
+            || $match['preferredFullName'] !== $preferred_full_name;
 
           // Diff every association up front, so the decision to load the entity
           // at all can be made from memory.
@@ -1256,6 +1272,10 @@ final class ImportPhysiciansCommand extends Command {
                 $physician->setCredId($credId);
                 $physician->setLegalName($legalName);
                 $physician->setCredentials($credentials);
+                $physician->setNpi($npi);
+                $physician->setGender($gender);
+                $physician->setPhone($phone);
+                $physician->setPreferredFullName($preferred_full_name);
               }
 
               foreach ($diffs as $name => $diff) {
@@ -1574,7 +1594,7 @@ final class ImportPhysiciansCommand extends Command {
     $adoptable = [];
 
     $rows = $this->physicians->createQueryBuilder('p')
-      ->select('p.id AS id, p.credId AS credId, p.legalName AS legalName, p.credentials AS credentials')
+      ->select('p.id AS id, p.credId AS credId, p.legalName AS legalName, p.credentials AS credentials, p.npi AS npi, p.gender AS gender, p.phone AS phone, p.preferredFullName AS preferredFullName')
       ->getQuery()
       ->getScalarResult();
 
@@ -1589,6 +1609,10 @@ final class ImportPhysiciansCommand extends Command {
           'id'          => $id,
           'legalName'   => $legalName,
           'credentials' => $credentials,
+          'npi'         => $row['npi'],
+          'gender'      => $row['gender'],
+          'phone'       => $row['phone'],
+          'preferredFullName' => $row['preferredFullName'],
         ];
         continue;
       }
@@ -1746,5 +1770,16 @@ final class ImportPhysiciansCommand extends Command {
     $power = min($power, count($units) - 1);
 
     return sprintf('%.1f %s', $bytes / (1024 ** $power), $units[$power]);
+  }
+
+  /**
+   * An empty CSV cell means "no value", which the database spells NULL.
+   *
+   * extractRecord() trims every cell to a string, so a blank arrives as ''.
+   * Converting here, as the value enters, means everything downstream (the
+   * change check, the setters, the UNIQUE index on npi) only sees one kind of empty.
+   */
+  private function nullIfBlank(string $value): ?string {
+    return $value === '' ? null : $value;
   }
 }

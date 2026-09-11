@@ -38,6 +38,24 @@ class Physician  {
   #[ORM\Column(type: 'string', length: 255)]
   private string $credentials;
 
+  /**
+   * National Provider Identifier: the one ID that means the same thing outside
+   * this system. Not displayed; it's the key for the BIDMC profile link and
+   * publications later.
+   */
+  #[ORM\Column(type: 'string', length: 10, nullable: true, unique: true)]
+  private ?string $npi = null;
+
+  /** Raw code from the extract (F, M, X). Turned into a label only for display. */
+  #[ORM\Column(type: 'string', length: 8, nullable: true)]
+  private ?string $gender = null;
+
+  /** Stored exactly as the extract gives it; see getPhoneDialable(). */
+  #[ORM\Column(type: 'string', length: 32, nullable: true)]
+  private ?string $phone = null;
+
+  #[ORM\Column(name: 'preferred_full_name', type: 'string', length: 255, nullable: true)]
+  private ?string $preferredFullName = null;
 
   /**
    * When this physician was last seen in a provider demographics import.
@@ -267,6 +285,79 @@ class Physician  {
   public function setLegalName(string $legalName): self {
     $this->legalName = $legalName;
     return $this;
+  }
+
+  public function getNpi(): ?string {
+    return $this->npi;
+  }
+
+  public function setNpi(?string $npi): self {
+    $this->npi = $npi;
+    return $this;
+  }
+
+  public function getGender(): ?string {
+    return $this->gender;
+  }
+
+  public function getGenderLabel(): ?string {
+    // normalize F or M to Female or Male, importer also has X for non-binary.
+    switch ($this->gender) {
+      case 'F':
+        return 'Female';
+      case 'M':
+        return 'Male';
+      case 'X':
+        return 'Non-binary';
+      default:
+        return $this->gender;
+    }
+  }
+
+  public function setGender(?string $gender): self {
+    $this->gender = $gender;
+    return $this;
+  }
+
+  public function getPhone(): ?string {
+    return $this->phone;
+  }
+
+  public function setPhone(?string $phone): self {
+    $this->phone = $phone;
+    return $this;
+  }
+
+  public function getPreferredFullName(): ?string {
+    return $this->preferredFullName;
+  }
+
+  public function setPreferredFullName(?string $preferredFullName): self {
+    $this->preferredFullName = $preferredFullName;
+    return $this;
+  }
+
+  /**
+   * The phone as a tel: value, e.g. "+16177549600;ext=9".
+   */
+  public function getPhoneDialable(): ?string {
+    if (!$this->phone) {
+      return null;
+    }
+
+    $parts = preg_split('/\s*(ext:?|x)\s*/i', $this->phone, 2);
+    $main = preg_replace('/\D/', '', $parts[0]);
+    if (strlen($main) !== 10) {
+      return null;
+    }
+    $tel = '+1' . $main;
+    if (isset($parts[1])) {
+      $ext = preg_replace('/\D/', '', $parts[1]);
+      if ($ext) {
+        $tel .= ';ext=' . $ext;
+      }
+    }
+    return $tel;
   }
 
 }
