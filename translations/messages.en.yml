@@ -25,3 +25,8 @@ audit:
         physician_edit.published: '%actor% proposed an edit for physician'
         physician_edit.rejected: '%actor% rejected the proposed physician edit'
         physician_edit.confirmed: '%actor% confirmed the proposed physician'
+two_factor:
+    title: 'HMFP Search Tool - Two-Factor Authentication'
+    description: 'Two-factor authentication (2FA) adds an extra layer of security to your account by requiring a second form of verification in addition to your password. This helps protect your account from unauthorized access, even if your password is compromised.'
+    code_placeholder: 'Enter the 6-digit code from your authenticator app'
+    code_help: 'Check your email for the 6-digit code and enter it here. If you do not receive the code, click candel to cancel and try again.'
