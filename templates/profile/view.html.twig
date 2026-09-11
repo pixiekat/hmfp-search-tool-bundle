@@ -1,50 +1,301 @@
+{#
+  A physician's profile.
+
+  Two columns on wide screens, one on narrow ones:
+    - .profile-main  — about the PERSON: biography, clinical interests,
+                       specialties, departments, languages and locations.
+                       What someone came to this page to find out.
+    - .profile-aside — about the RECORD: actions, where the data comes from,
+                       and who has changed it.
+
+  Source order is main-then-aside, and the CSS never reorders it. So on a
+  phone, in a screen reader, or with the stylesheet switched off, the page
+  reads top to bottom in order of importance: the person first, the
+  paperwork last. (A grid that visually swaps the order would make keyboard
+  focus jump around the screen, which is disorienting.)
+
+  Nothing here needs JavaScript. The one bit of script — "Back to search"
+  using history.back() — falls back to a plain link to the search page.
+#}
 {% extends '@HMFPSearchTool/search/layout.html.twig' %}
 
-{% block search_page_title %}Viewing: {{ physician.legalName }}{% endblock %}
+{% block search_page_title %}{{ physician.legalName }}{% endblock %}
 
 {% block content %}
-  <h1>View profile</h1>
+  {#
+    Filtering and permission checks happen once, up here, so the markup below
+    reads as layout rather than logic.
 
-  <div class="profile">
-    <h2>{{ physician.legalName }}{% if physician.credentials is not empty %}, {{ physician.credentials }}{% endif %}</h2>
-    <p class="muted">
-      {{ physician.getDepartments|map(d => d.getName)|join(', ') }}
-      {% if physician.getDepartments|length > 0 and physician.getFacilities|length > 0 %} · {% endif %}
-      {{ physician.getFacilities|map(f => f.getName)|join(', ') }}
-    </p>
+    physician.terms holds EVERY taxonomy (specialties, languages, …), so it has
+    to be narrowed by vocabulary before it is listed under a heading. Same
+    approach as the search results template.
+  #}
+  {% set byName = (a, b) => a.name|lower <=> b.name|lower %}
+  {% set specialties = physician.terms|filter(t => t.vocabulary and t.vocabulary.name == 'specialty')|sort(byName) %}
+  {% set languages = physician.terms|filter(t => t.vocabulary and t.vocabulary.name == 'language')|sort(byName) %}
+  {% set interestTerms = (interests is defined and interests is not empty) ? interests|sort(byName) : [] %}
 
-    {% if bio is defined and bio is not empty %}
-      <section class="bio">
-        <h3>Biography</h3>
-        <p>{{ bio|nl2br }}</p>
-      </section>
-    {% endif %}
+  {% set canSearch = is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\SearchVoterInterface::PERMISSION_CAN_ACCESS_SEARCH'), physician) %}
+  {% set canEdit = is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\PhysicianVoterInterface::PERMISSION_CAN_EDIT_PHYSICIAN'), physician) %}
+  {% set canViewEdits = is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\PhysicianVoterInterface::PERMISSION_CAN_VIEW_PHYSICIAN_EDITS'), physician) %}
+  {% set canViewAllEdits = is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\PhysicianVoterInterface::PERMISSION_CAN_VIEW_ALL_PHYSICIAN_EDITS'), physician) %}
 
-    {% if interests is defined and interests is not empty %}
-      <section class="interests">
-        <h3>Clinical Interests</h3>
-        <ul>
-          {% for interest in interests %}
-            <li>{{ interest }}</li>
-          {% endfor %}
-        </ul>
-      </section>
-    {% endif %}
+  {#
+    "Last updated" means the newest edit that is actually LIVE. The controller's
+    last_edit is simply edits[0], which could be a reverted change — and
+    "Last updated by X" is misleading if X's change was rolled back.
+  #}
+  {% set lastLiveEdit = edits|filter(e => e.reviewStatus.isPublished)|first %}
+  {% set awaitingCount = edits|filter(e => e.reviewStatus.isAwaitingReview)|length %}
 
-    {% if last_edit is not empty %}
-      <section class="edits">
-        <p><em>Last updated by {{ last_edit.getEditedByLabel }} at {{ last_edit.editedAt|date('m/d/Y g:i A') }}</em></p>
-      </section>
-    {% endif %}
+  {# How many history rows to show before handing off to the full history. #}
+  {% set historyLimit = 5 %}
 
-    <div class="actions">
-      {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\SearchVoterInterface::PERMISSION_CAN_ACCESS_SEARCH'), physician) %}
-        <a class="button" href="#" onclick="window.history.back(); return false;">&laquo; Back to Search Results</a>
-        <a class="button" href="{{ path('hmfp_search_tool_home_front') }}">Start a new Search</a>
+  {# ── Header ──────────────────────────────────────────────────────────── #}
+  {#
+    The physician's name IS the page's subject, so it is the <h1>. The old
+    "View profile" heading told a screen-reader user nothing they didn't
+    already know from the page title.
+  #}
+  <header class="profile-header">
+    <p class="profile-eyebrow">Provider profile</p>
+    <h1>
+      {% if physician.preferredFullName is not empty %}
+        {{ physician.preferredFullName }}
+      {% else %}
+        {# The ?: operator is a shorthand for the above if/else. #}
+        {{ physician.legalName }}
+        {%- if physician.credentials is not empty %}<span class="credentials">, {{ physician.credentials }}</span>{% endif %}
       {% endif %}
-      {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\PhysicianVoterInterface::PERMISSION_CAN_EDIT_PHYSICIAN'), physician) %}
-        <a class="button" href="{{ path('hmfp_search_tool_profile_edit', {'id': physician.id}) }}" class="button">Propose Edit</a>
+    </h1>
+  </header>
+
+  <div class="profile-layout">
+
+    {# ── Main column: the person ─────────────────────────────────────── #}
+    <div class="profile-main">
+
+      <section aria-labelledby="bio-heading">
+        <h2 id="bio-heading">Biography</h2>
+        {% if bio is defined and bio is not empty %}
+          <div class="profile-bio">{{ bio|nl2br }}</div>
+        {% else %}
+          {#
+            An empty state rather than a missing section: "there is no bio" and
+            "the page failed to load the bio" look identical if the heading
+            just isn't there.
+          #}
+          <p class="muted">
+            No biography has been added yet.
+            {%- if canEdit %} <a href="{{ path('hmfp_search_tool_profile_edit', {'id': physician.id}) }}">Propose one</a>.{% endif %}
+          </p>
+        {% endif %}
+      </section>
+
+      {% if interestTerms is not empty %}
+        <section aria-labelledby="interests-heading">
+          <h2 id="interests-heading">Clinical interests</h2>
+          {#
+            A real list, styled as tags. With CSS off it is a plain bulleted
+            list of links, which is exactly what it should degrade to. Each one
+            runs a search for other providers with the same interest.
+          #}
+          <ul class="tag-list">
+            {% for term in interestTerms %}
+              <li><a href="{{ path('hmfp_search_tool_search', {clinical_interest: term.id}) }}">{{ term.name }}</a></li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+
+      {% if specialties is not empty or physician.departments|length or languages is not empty or physician.gender is not empty %}
+        <section aria-labelledby="practice-heading">
+          <h2 id="practice-heading">Practice</h2>
+          {#
+            A description list: each fact is a name/value pair, and <dl> is the
+            element that says so. Screen readers announce the pairing, which a
+            run of <p><strong>Label:</strong> value</p> does not.
+          #}
+          <dl class="profile-facts">
+
+            {% if physician.gender %}
+              <dt>Gender</dt>
+              <dd>{{ physician.genderLabel }}</dd>
+            {% endif %}
+
+            {% if specialties is not empty %}
+              <dt>Specialt{{ specialties|length == 1 ? 'y' : 'ies' }}</dt>
+              <dd>
+                {%- for term in specialties -%}
+                  <a href="{{ path('hmfp_search_tool_search', {specialty: term.id}) }}">{{ term.name }}</a>
+                  {%- if not loop.last %}, {% endif -%}
+                {%- endfor -%}
+              </dd>
+            {% endif %}
+
+            {% if physician.departments|length %}
+              <dt>Department{{ physician.departments|length == 1 ? '' : 's' }}</dt>
+              <dd>
+                {%- for department in physician.departments -%}
+                  <a href="{{ path('hmfp_search_tool_search', {department: department.id}) }}">{{ department.name }}</a>
+                  {%- if not loop.last %}, {% endif -%}
+                {%- endfor -%}
+              </dd>
+            {% endif %}
+
+            {% if languages is not empty %}
+              <dt>Language{{ languages|length == 1 ? '' : 's' }}</dt>
+              <dd>
+                {%- for term in languages -%}
+                  <a href="{{ path('hmfp_search_tool_search', {language: term.id}) }}">{{ term.name }}</a>
+                  {%- if not loop.last %}, {% endif -%}
+                {%- endfor -%}
+              </dd>
+            {% endif %}
+          </dl>
+        </section>
+      {% endif %}
+
+      {% if physician.phone is not empty %}
+        <section aria-labelledby="contact-heading">
+          <h2 id="contact-heading">Contact</h2>
+          <dl class="profile-facts">
+            {% if physician.phone %}
+              <dt>Phone</dt>
+              {% if physician.phoneDialable %}
+                <dd><a href="tel:{{ physician.phoneDialable }}">{{ physician.phone }}</a></dd>
+              {% else %}
+                <dd>{{ physician.phone }}</dd>
+              {% endif %}
+            {% endif %}
+          </dl>
+        </section>
+      {% endif %}
+
+      {% if physician.facilities|length %}
+        <section aria-labelledby="locations-heading">
+          <h2 id="locations-heading">Location{{ physician.facilities|length == 1 ? '' : 's' }}</h2>
+          {#
+            No map links yet on purpose: the facility coordinates have not been
+            verified, and a map pin in the wrong place is worse than none.
+          #}
+          <ul class="location-list">
+            {% for facility in physician.facilities %}
+              <li>
+                <a class="location-name" href="{{ path('hmfp_search_tool_search', {facility: facility.id}) }}">{{ facility.name }}</a>
+                {% if facility.formattedAddress %}
+                  <span class="location-address">{{ facility.formattedAddress }}</span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
       {% endif %}
     </div>
+
+    {# ── Aside: the record ───────────────────────────────────────────── #}
+    {#
+      <aside> is a landmark, so screen-reader users can jump straight to it (or
+      straight past it). The label names what is IN it, since "complementary"
+      — the role's default name — says nothing useful.
+    #}
+    <aside class="profile-aside" aria-label="About this record">
+
+      {% if canSearch or canEdit %}
+        <section class="profile-card" aria-labelledby="actions-heading">
+          <h2 id="actions-heading">Actions</h2>
+          <ul class="action-list">
+            {% if canEdit %}
+              <li><a class="button" href="{{ path('hmfp_search_tool_profile_edit', {'id': physician.id}) }}">Propose an edit</a></li>
+            {% endif %}
+            {% if canSearch %}
+              {#
+                history.back() keeps the user's filters and scroll position, which
+                is what "back to results" should mean. With JavaScript off (or
+                with no history, e.g. a link opened in a new tab) the href takes
+                over and goes to the search page instead.
+              #}
+              <li><a class="button button--secondary" href="{{ path('hmfp_search_tool_search') }}" onclick="if (history.length > 1) { history.back(); return false; }">&laquo; Back to search results</a></li>
+              <li><a class="button button--secondary" href="{{ path('hmfp_search_tool_home_front') }}">Start a new search</a></li>
+            {% endif %}
+          </ul>
+        </section>
+      {% endif %}
+
+      <section class="profile-card" aria-labelledby="record-heading">
+        <h2 id="record-heading">Record details</h2>
+        <dl class="record-facts">
+          <dt>Last updated</dt>
+          <dd>
+            {% if lastLiveEdit %}
+              <time datetime="{{ lastLiveEdit.editedAt|date('c') }}">{{ lastLiveEdit.editedAt|date('M j, Y g:i A') }}</time>
+              <br><span class="muted">by {{ lastLiveEdit.editedByLabel }}</span>
+            {% else %}
+              <span class="muted">Not edited here yet</span>
+            {% endif %}
+          </dd>
+
+          {% if awaitingCount > 0 %}
+            <dt>Review</dt>
+            <dd>
+              {{ awaitingCount }} live change{{ awaitingCount == 1 ? '' : 's' }} awaiting review
+            </dd>
+          {% endif %}
+
+          <dt>Hospital import</dt>
+          <dd>
+            {#
+              NULL here means "never came from the import": a hand-created
+              record, NOT a departed physician. See Physician::$lastSeenInImportAt.
+            #}
+            {% if lastSeenInImportAt %}
+              Last included <time datetime="{{ lastSeenInImportAt|date('c') }}">{{ lastSeenInImportAt|date('M j, Y') }}</time>
+            {% else %}
+              <span class="muted">Added by hand, not from the import</span>
+            {% endif %}
+          </dd>
+        </dl>
+        <p class="hint">
+          Name, credentials, departments and locations come from the hospital's
+          credentialing record. Contact the credentialing team if they are wrong.
+        </p>
+      </section>
+
+      {% if canViewEdits %}
+        <section class="profile-card" aria-labelledby="history-heading">
+          <h2 id="history-heading">Edit history</h2>
+          {% if edits is empty %}
+            <p class="muted">No changes have been proposed for this profile.</p>
+          {% else %}
+            {#
+              Newest first (findHistoryFor orders by editedAt DESC). The status
+              WORD carries the meaning; any colour on the badge is a second cue,
+              never the only one.
+            #}
+            <ul class="edit-history">
+              {% for edit in edits|slice(0, historyLimit) %}
+                <li>
+                  <strong>{{ edit.fieldName.label }}</strong>
+                  <span class="status status--{{ edit.reviewStatus.value }}">{{ edit.reviewStatus.label }}</span>
+                  <br>
+                  <span class="muted">
+                    {{ edit.editedByLabel }},
+                    <time datetime="{{ edit.editedAt|date('c') }}">{{ edit.editedAt|date('M j, Y') }}</time>
+                  </span>
+                </li>
+              {% endfor %}
+            </ul>
+
+            {% if edits|length > historyLimit %}
+              <p class="hint">Showing the {{ historyLimit }} most recent of {{ edits|length }} changes.</p>
+            {% endif %}
+            {% if canViewAllEdits %}
+              <p><a href="{{ path('hmfp_search_tool_admin_physician_edit_history', {'id': physician.id}) }}">Full edit history</a></p>
+            {% endif %}
+          {% endif %}
+        </section>
+      {% endif %}
+    </aside>
+
   </div>
 {% endblock %}

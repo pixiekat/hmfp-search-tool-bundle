@@ -242,6 +242,278 @@ mark {
   flex-wrap: wrap;
 }
 
+/* Buttons: For LINKS that act as buttons (a.button), on the public pages. admin-cp.css has its own; this one uses the search tokens so dark mode works.
+
+   The text colour is var(--hmfp-bg), not #fff. In light mode that IS white on dark blue; in dark mode the link colour becomes a light blue, and white on light blue drops to about 2:1. The background token flips with it, so it stays readable in both.
+
+   min-height 2.75rem = 44px, the WCAG target size. It helps anyone with a tremor or an imprecise pointer, not just touchscreens. */
+.button {
+  display: inline-block;
+  min-height: 2.75rem;
+  box-sizing: border-box;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--hmfp-link);
+  border-radius: var(--hmfp-radius);
+  background: var(--hmfp-link);
+  color: var(--hmfp-bg);
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: none;
+}
+.button:hover {
+  background: var(--hmfp-link-hover);
+  border-color: var(--hmfp-link-hover);
+  color: var(--hmfp-bg);
+}
+/* Outlined variant for the less important actions, so the main one stands out. */
+.button--secondary {
+  background: transparent;
+  color: var(--hmfp-link);
+}
+.button--secondary:hover {
+  background: var(--hmfp-surface);
+  color: var(--hmfp-link-hover);
+}
+
+/* Profile page styles
+All styles for the physician profile (profile/view.html.twig).
+
+Mobile-first: one column by default, two from 48rem up. A browser without grid support falls back to plain stacked blocks, which is the same as the mobile layout, so nothing is lost. */
+.profile-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--hmfp-border);
+}
+.profile-header h1 { margin: 0; }
+.profile-eyebrow {
+  margin: 0 0 0.25rem;
+  color: var(--hmfp-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.profile-layout {
+  display: grid;
+  gap: 2rem;
+  /* minmax(0, 1fr), not 1fr: a plain 1fr column cannot shrink below its
+     longest unbreakable word (a long URL in a bio), which pushes the page
+     sideways on a phone. */
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 48rem) {
+  .profile-layout { grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem); }
+}
+
+.profile-main > section { margin-bottom: 2rem; }
+.profile-main h2 { margin-top: 0; }
+.profile-bio { max-width: var(--hmfp-measure); }
+
+/* Clinical interests as tags. Without CSS this is a normal bulleted list. */
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tag-list a {
+  display: inline-block;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--hmfp-border);
+  border-radius: 999px;
+  background: var(--hmfp-surface);
+  text-decoration: none;
+}
+.tag-list a:hover { border-color: var(--hmfp-link); text-decoration: underline; }
+
+/* Practice facts: label column and value column on wider screens. */
+.profile-facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.25rem 1.25rem;
+  margin: 0;
+}
+.profile-facts dt { font-weight: 600; }
+.profile-facts dd { margin: 0 0 0.75rem; }
+@media (min-width: 36rem) {
+  .profile-facts { grid-template-columns: max-content minmax(0, 1fr); }
+  .profile-facts dd { margin-bottom: 0.5rem; }
+}
+
+.location-list { margin: 0; padding: 0; list-style: none; }
+.location-list li {
+  margin-bottom: 0.9rem;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--hmfp-border);
+}
+.location-name { display: block; font-weight: 600; }
+.location-address { display: block; color: var(--hmfp-muted); font-size: 0.925rem; }
+
+/* Aside: grouped into cards so the three kinds of information (actions,
+   record details, history) read as separate things at a glance. */
+.profile-card {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--hmfp-border);
+  border-radius: var(--hmfp-radius);
+  background: var(--hmfp-surface);
+}
+.profile-card h2 { margin: 0 0 0.75rem; font-size: 1.05rem; }
+.profile-card > :last-child { margin-bottom: 0; }
+
+.action-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.action-list .button { display: block; text-align: center; }
+
+.record-facts { margin: 0; font-size: 0.925rem; }
+.record-facts dt { color: var(--hmfp-muted); font-weight: 600; }
+.record-facts dd { margin: 0 0 0.75rem; }
+
+.edit-history { margin: 0 0 0.75rem; padding: 0; list-style: none; font-size: 0.925rem; }
+.edit-history li { padding: 0.5rem 0; border-bottom: 1px solid var(--hmfp-border); }
+.edit-history li:first-child { padding-top: 0; }
+
+/* Status badge. The word is the meaning; the colour only reinforces it.
+   "Awaiting review" reuses the <mark> pair, which is already checked for
+   contrast in both light and dark mode. */
+.status {
+  display: inline-block;
+  margin-left: 0.25rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--hmfp-border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.status--unreviewed {
+  background: var(--hmfp-mark-bg);
+  border-color: var(--hmfp-mark-bg);
+  color: var(--hmfp-mark-text);
+}
+.status--rejected { text-decoration: line-through; }
+
+/* Profile edit form styles
+All styles for the edit page (profile/edit.html.twig): the form, its buttons, the "goes live" callout and flash messages.
+
+Form tokens live here, beside the only rules that use them, rather than in the main :root block. Same pattern as the main palette though: light values first, then only the colours restated for dark mode. */
+:root {
+  /* Input borders need 3:1 against the page (WCAG 1.4.11, non-text contrast)
+     so people can see where the box IS. --hmfp-border is ~1.4:1 on white:
+     fine for decorative dividers, too faint for a field you have to find. */
+  --hmfp-input-border: #767680;   /* 4.5:1 on white */
+  --hmfp-success: #15803d;        /* 5.0:1 on white */
+  --hmfp-success-bg: #effaf3;
+  --hmfp-error: #b91c1c;          /* 6.5:1 on white */
+  --hmfp-error-bg: #fdf1f1;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --hmfp-input-border: #8b8b96;
+    --hmfp-success: #4ade80;
+    --hmfp-success-bg: #10251a;
+    --hmfp-error: #f87171;
+    --hmfp-error-bg: #2a1414;
+  }
+}
+
+.profile-form .field { margin-bottom: 1.75rem; }
+.profile-form label {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+/* The hint sits between label and box, so it needs space below, not above. */
+.profile-form .hint { margin: 0 0 0.5rem; max-width: var(--hmfp-measure); }
+
+.profile-form textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 8rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--hmfp-input-border);
+  border-radius: var(--hmfp-radius);
+  background: var(--hmfp-bg);
+  color: var(--hmfp-text);
+  /* font: inherit, because form controls do NOT inherit the page font by
+     default; they fall back to the browser's (often a small monospace for
+     textarea). 1rem also stops iOS Safari zooming the page on focus. */
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1.6;
+  /* Vertical only: dragging it wider would break the column layout. */
+  resize: vertical;
+}
+.profile-form textarea:hover { border-color: var(--hmfp-text); }
+/* The global :focus-visible ring still applies; this just stops the border
+   competing with it. */
+.profile-form textarea:focus { border-color: var(--hmfp-focus); }
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--hmfp-border);
+}
+/* .button was written for links; a real <button> also needs the page font
+   (see the textarea note) and a pointer. */
+button.button {
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* "Goes live immediately": a note to read BEFORE editing, so it sits above the
+   form with a left accent rather than being tucked under the button. */
+.callout {
+  margin: 0 0 1.5rem;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--hmfp-focus);
+  border-radius: var(--hmfp-radius);
+  background: var(--hmfp-surface);
+  max-width: var(--hmfp-measure);
+}
+
+/* Flash messages. The bold word ("Saved:", "Error:") carries the meaning; the
+   colour only reinforces it. */
+.flash {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--hmfp-border);
+  border-left-width: 4px;
+  border-radius: var(--hmfp-radius);
+  background: var(--hmfp-surface);
+}
+.flash--success { border-color: var(--hmfp-success); background: var(--hmfp-success-bg); }
+.flash--error   { border-color: var(--hmfp-error);   background: var(--hmfp-error-bg); }
+.flash--notice  { border-color: var(--hmfp-link); }
+
+/* Small screens: full-width buttons are easier to hit, and Save stays first. */
+@media (max-width: 40rem) {
+  .form-actions { flex-direction: column; align-items: stretch; }
+  .form-actions .button { text-align: center; }
+}
+
+/* Printing: people do print profiles. Drop the buttons and the two-column
+   grid; the rest prints as a plain document. */
+@media print {
+  .skip-link, .action-list { display: none; }
+  .profile-layout { display: block; }
+  .profile-card { border: 0; padding: 0; background: none; }
+}
+
 /* Small screens: Stack the filters and actions vertically, and indent the results less to make more room for the content. */
 @media (max-width: 40rem) {
   .filters-grid { flex-direction: column; gap: 0.85rem; }
