@@ -17,8 +17,11 @@ use Symfony\Component\Security\Core\User\UserInterface;
 #[ORM\Table(name: 'users')]
 #[ORM\HasLifecycleCallbacks]
 #[ORM\RepositoryClass('Pixiekat\HMFPSearchToolBundle\Repository\UserRepository')]
-class User implements HelpersUserInterface, UserInterface, PasswordAuthenticatedUserInterface {
+class User implements HelpersUserInterface, UserInterface, TwoFactorInterface, PasswordAuthenticatedUserInterface {
   use PixieTraits\EntityIdTrait;
+
+  #[ORM\Column(type: 'string', length: 20, nullable: true)]
+  private ?string $authCode = null;
 
   #[ORM\Column(type: 'string', length: 255, unique: true)]
   private string $emailAddress;
@@ -37,6 +40,10 @@ class User implements HelpersUserInterface, UserInterface, PasswordAuthenticated
   public function eraseCredentials(): void {
   }
 
+  public function getAuthCode(): ?string {
+    return $this->authCode;
+  }
+
   /** Maps the display name for the user. */
   public function getDisplayName(): string {
     return $this->emailAddress;
@@ -50,6 +57,11 @@ class User implements HelpersUserInterface, UserInterface, PasswordAuthenticated
   /** The unique identifier Symfony Security uses for this user. */
   public function getUserIdentifier(): string {
     return (string) $this->emailAddress;
+  }
+
+  public function setAuthCode(string $authCode): self {
+    $this->authCode = $authCode;
+    return $this;
   }
 
   /** The unique identifier Symfony Security uses for this user. */
@@ -91,5 +103,25 @@ class User implements HelpersUserInterface, UserInterface, PasswordAuthenticated
 
   public function isFirstUser(): bool {
     return $this->getId() === 1;
+  }
+
+  public function isEmailAuthEnabled(): bool {
+    return true;
+  }
+
+  public function getEmailAuthRecipient(): string {
+    return $this->getEmailAddress();
+  }
+
+  public function getEmailAuthCode(): string {
+    if (null === $this->authCode) {
+        throw new \LogicException('The email authentication code was not set');
+    }
+
+    return $this->authCode;
+  }
+
+  public function setEmailAuthCode(string $authCode): void {
+    $this->authCode = $authCode;
   }
 }
