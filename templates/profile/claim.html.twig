@@ -80,6 +80,25 @@
         </p>
       </section>
 
+    {% elseif not is_granted('can_claim_physician', physician) %}
+      <section class="profile-card" aria-labelledby="blocked-heading" role="status">
+        <h2 id="blocked-heading">You already have a claimed profile</h2>
+        <p>
+          Each account can hold one claimed profile. If this one is also yours,
+          email <a href="mailto:{{ supportEmail }}">{{ supportEmail }}</a> and a
+          data steward will link it by hand.
+        </p>
+        {% if activeClaimForUser %}
+          <p>
+            You have already claimed <strong><a href="{{ path('hmfp_search_tool_profile_view', {'id': activeClaimForUser.id}) }}">
+              {{ activeClaimForUser.legalName }}
+              {%- if activeClaimForUser.credentials is not empty %}, {{ activeClaimForUser.credentials }}{% endif %}
+            </a></strong>.
+          </p>
+        {% endif %}
+      </section>
+
+
     {# ── This user has a claim in flight ──────────────────────────────── #}
     {% elseif pendingClaim %}
       <section class="profile-card" aria-labelledby="pending-heading" role="status">

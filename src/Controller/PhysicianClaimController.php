@@ -380,6 +380,14 @@ final class PhysicianClaimController extends AbstractController {
   public function start(Entity\Physician $physician): Response {
     $user = $this->currentUser();
 
+    $activeClaimForUser = null;
+    if ($claimedPhysicians = $this->claims->claimedPhysicianIdsFor($user)) {
+      $claimedPhysicianId = current($claimedPhysicians);
+      if ($claimedPhysicianId !== false) {
+        $activeClaimForUser = $this->physicians->find($claimedPhysicianId);
+      }
+    }
+
     return $this->render('@HMFPSearchTool/profile/claim.html.twig', [
       'physician' => $physician,
 
@@ -387,6 +395,9 @@ final class PhysicianClaimController extends AbstractController {
       // offer, and says who — a physician looking at their own claimed record
       // needs to know whether the holder is them, an assistant, or a stranger.
       'activeClaim' => $this->claims->activeClaimOn($physician),
+
+      // The physician that has been claimed by the current user, if any. The template shows this instead of the offer, and says who — a physician looking at their own claimed record needs to know whether the holder is them, an assistant, or a stranger.
+      'activeClaimForUser' => $activeClaimForUser,
 
       // This user has an email already sitting in their inbox. Offer to re-send
       // rather than silently minting a second one.
