@@ -40,6 +40,56 @@
   </header>
 
   <main id="main">
+    {#
+      Flash messages after a redirect, for EVERY page on this layout.
+
+      Lives here rather than in each template because a controller that
+      redirects with a flash has no way of knowing whether the page it lands on
+      bothers to show it. When only profile/edit rendered them, every message on
+      the claim pages — "check your email", "invalid security token", "already
+      claimed" — was set, stored, and silently thrown away, so a refused form
+      post looked exactly like the page reloading.
+
+      Inside <main>, above the content, so that:
+        - the skip link and the "main" landmark both land on it first, and
+        - it is the first thing read after the page heading area, not buried
+          under a form the person has already filled in once.
+
+      Wrapped in its own block so a page with a genuinely different need can
+      override it — but the default should be "shown", never "forgotten".
+    #}
+    {% block flashes %}
+      {#
+        Read the flash bag ONCE. app.flashes() empties the bag as it reads it,
+        so checking "is not empty" with one call and looping with a second
+        would consume the messages in the check and leave the loop with nothing.
+      #}
+      {% set flashes = app.flashes(['success', 'error', 'notice']) %}
+
+      {#
+        A visible word for each type, so the meaning never depends on colour
+        alone (red/green is exactly the pair that collapses for colour-blind
+        users).
+
+        "Done" rather than edit's old "Saved": this layout serves the claim
+        flow too, and "Saved: Check your email…" would read as nonsense.
+      #}
+      {% set flashLabels = {success: 'Done', error: 'Error', notice: 'Note'} %}
+
+      {#
+        role="alert" for errors (announced straight away by screen readers,
+        even on page load), role="status" for the rest (polite — waits for a
+        pause in whatever is being read).
+      #}
+      {% for type, messages in flashes %}
+        {% for message in messages %}
+          <p class="flash flash--{{ type }}" role="{{ type == 'error' ? 'alert' : 'status' }}">
+            <strong class="flash__label">{{ flashLabels[type] }}:</strong> {{ message }}
+          </p>
+        {% endfor %}
+      {% endfor %}
+    {% endblock %}
+
     {% block content %}{% endblock %}
   </main>
 

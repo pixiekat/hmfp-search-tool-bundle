@@ -13,26 +13,14 @@
                        review, and what is managed by the hospital instead.
 
   Nothing here needs JavaScript. The form is a plain POST; the controller
-  redirects back here with a flash message saying what happened.
+  redirects back here with a flash message saying what happened. The message
+  itself is rendered by search/layout.html.twig, like on every other page.
 #}
 {% extends '@HMFPSearchTool/search/layout.html.twig' %}
 
 {% block search_page_title %}Edit {{ physician.legalName }}{% endblock %}
 
 {% block content %}
-  {#
-    Read the flash bag ONCE. app.flashes() empties the bag as it reads it, so
-    checking "is not empty" with one call and looping with a second would
-    consume the messages in the check and leave the loop with nothing.
-  #}
-  {% set flashes = app.flashes(['success', 'error', 'notice']) %}
-
-  {#
-    A visible word for each flash type, so the meaning never depends on colour
-    alone (red/green is exactly the pair that collapses for colour-blind users).
-  #}
-  {% set flashLabels = {success: 'Saved', error: 'Error', notice: 'Note'} %}
-
   {#
     "Last updated" = the newest edit that is actually LIVE, same rule as the
     view page. The controller splits history into awaitingReview and recent
@@ -63,19 +51,6 @@
 
     {# ── Main column: the form ───────────────────────────────────────── #}
     <div class="profile-main">
-
-      {#
-        Flashes after a redirect. role="alert" for errors (announced straight
-        away by screen readers, even on page load), role="status" for the rest
-        (polite — waits for a pause).
-      #}
-      {% for type, messages in flashes %}
-        {% for message in messages %}
-          <p class="flash flash--{{ type }}" role="{{ type == 'error' ? 'alert' : 'status' }}">
-            <strong class="flash__label">{{ flashLabels[type] }}:</strong> {{ message }}
-          </p>
-        {% endfor %}
-      {% endfor %}
 
       {# The "goes live immediately" warning, BEFORE anyone starts typing. #}
       <p class="callout">
