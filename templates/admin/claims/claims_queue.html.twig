@@ -1,0 +1,92 @@
+{#
+  The stewards' work queue: claims still waiting on a human.
+
+  Oldest first, because that is the person who has waited longest. The full list at
+  hmfp_search_tool_admin_claims is the archive and runs newest-first — a queue and
+  an archive want opposite orders, which is why they are two pages.
+
+  A row leaves here when somebody approves, rejects or revokes it. If the queue is
+  never empty, nobody is working it; the heading reports the true total so that is
+  visible rather than hidden behind a page limit.
+
+  No JavaScript. Actions come from the shared partial, which collapses them into one
+  <details> control per row.
+#}
+{% extends '@HMFPSearchTool/admin/layout.html.twig' %}
+
+{% block admin_page_title %}Claims awaiting review{% endblock %}
+
+{% block content %}
+  <h1>Claims awaiting review</h1>
+
+  {% if total == 0 %}
+    {#
+      An empty state, not a bare table. "Nothing to do" and "the page failed to
+      load" look identical when the only difference is an absent table body.
+    #}
+    <p class="notice">Nothing waiting. Every claim has been dealt with.</p>
+    <p><a href="{{ path('hmfp_search_tool_admin_claims') }}">See all claims &raquo;</a></p>
+  {% else %}
+    <p>
+      {{ total }} claim{{ total == 1 ? '' : 's' }} waiting.
+      {% if shown < total %}
+        {# Say so rather than silently truncating: a backlog is information. #}
+        Showing the {{ shown }} that have waited longest.
+      {% endif %}
+      <a href="{{ path('hmfp_search_tool_admin_claims') }}">See all claims, including settled ones &raquo;</a>
+    </p>
+
+    <table class="table table-striped">
+      <caption class="visually-hidden">Claims awaiting review, longest waiting first</caption>
+      <thead>
+        <tr>
+          <th scope="col">Physician</th>
+          <th scope="col">Claimant</th>
+          <th scope="col">State</th>
+          <th scope="col">Waiting since</th>
+          <th scope="col">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for claim in claims %}
+          <tr>
+            <td>
+              <a href="{{ path('hmfp_search_tool_profile_view', {'id': claim.physician.id}) }}" target="_blank" rel="noopener">
+                {{ claim.physician.legalName }}
+              </a>
+              {% if claim.physician.credentials is not empty %}, {{ claim.physician.credentials }}{% endif %}
+            </td>
+
+            <td>{{ claim.user.emailAddress }}</td>
+
+            <td>
+              {{ claim.status.label }}
+              {% if claim.method %}
+                <br><span class="muted">{{ claim.method.label }}</span>
+              {% endif %}
+              {#
+                What a steward needs to know before deciding, and the reason this
+                column is not just the status. A pending claim with four failed NPI
+                attempts is a different proposition from one with none.
+              #}
+              {% if claim.attempts > 0 %}
+                <br><span class="muted">
+                  {{ claim.attempts }} failed NPI attempt{{ claim.attempts == 1 ? '' : 's' }}
+                </span>
+              {% endif %}
+              {% if claim.note %}
+                <p class="claim-note">{{ claim.note }}</p>
+              {% endif %}
+            </td>
+
+            <td>
+              <time datetime="{{ claim.claimedAt|date('c') }}">{{ claim.claimedAt|date('M j, Y g:i A') }}</time>
+            </td>
+
+            <td>{{ include('@HMFPSearchTool/admin/claims/_claim_actions.html.twig', {claim: claim}) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}

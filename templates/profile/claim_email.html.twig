@@ -1,0 +1,46 @@
+{#
+  The confirmation email for a profile claim.
+
+  Plain HTML in the same flat style as user/email_auth_code.html.twig — no
+  layout, no CSS, no images. Mail clients strip most of it anyway, and a
+  confirmation email that only makes sense with styling applied is a
+  confirmation email that fails in Outlook's reading pane.
+
+  The URL is printed as well as linked. Some clients do not linkify, some
+  corporate gateways rewrite hrefs, and a visible URL can be copied by hand
+  when both of those go wrong.
+#}
+<p>Dear {{ user.getDisplayName }},</p>
+
+<p>
+  Somebody using your account asked to claim the HMFP Search Tool profile for
+  <strong>{{ physician.legalName }}{% if physician.credentials is not empty %}, {{ physician.credentials }}{% endif %}</strong>.
+</p>
+
+<p>If that was you, confirm it here and you will be asked for your NPI to finish:</p>
+
+<p><a href="{{ confirmUrl }}">{{ confirmUrl }}</a></p>
+
+{% if expiresAt %}
+  <p>
+    This link stops working on
+    {{ expiresAt|date('l j F Y') }} at {{ expiresAt|date('g:i A') }}.
+  </p>
+{% endif %}
+
+<p>
+  Once the profile is linked to your account you will be able to propose changes
+  to your biography and clinical interests. A data steward reviews anything you
+  submit before it appears in the directory.
+</p>
+
+{#
+  The line that matters. Somebody receiving this unexpectedly is the earliest
+  and best signal that a claim is going to the wrong person — well before a
+  steward sees it in a queue — so tell them plainly what to do about it.
+#}
+<p>
+  <strong>If you did not ask for this, please do not use the link above.</strong>
+  Email <a href="mailto:{{ supportEmail }}">{{ supportEmail }}</a> or call
+  (617) 278-8162 and let us know, so we can find out who did.
+</p>

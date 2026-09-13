@@ -1,0 +1,203 @@
+{#
+  Step 1 of claiming a profile: "Are you this physician?"
+
+  Three mutually exclusive states, and the template picks one:
+    - someone already holds the claim  → say so, offer a way to dispute it
+    - this user has one pending        → offer to send the link again
+    - nobody holds it                  → the offer
+
+  Deliberately wordy. This page asks somebody to assert an identity, and the
+  thing that stops a well-meaning department administrator claiming their
+  consultant's profile "to be helpful" is a clear sentence saying not to — not
+  a validation error after the fact.
+
+  No JavaScript. Every state is plain markup and one form post.
+#}
+{% extends '@HMFPSearchTool/search/layout.html.twig' %}
+
+{% set displayName = physician.preferredFullName is not empty
+  ? physician.preferredFullName
+  : physician.legalName %}
+
+{% block search_page_title %}Claim {{ displayName }}'s profile{% endblock %}
+
+{% block content %}
+
+  <header class="profile-header">
+    <p class="profile-eyebrow">Provider profile</p>
+    <h1>Are you {{ displayName }}?</h1>
+  </header>
+
+  <div class="claim-layout">
+
+    {% if activeClaim and activeClaim.user.id == app.user.id %}
+      {# You hold it. Don't invite somebody to dispute their own claim. #}
+      <h2>You have claimed this profile</h2>
+      <p>Verified on <time datetime="{{ activeClaim.verifiedAt|date('c') }}">{{ activeClaim.verifiedAt|date('M j, Y') }}</time>.</p>
+      <p><a class="button" href="{{ path('hmfp_search_tool_profile_edit', {'physician': physician.id}) }}">Propose an edit</a></p>
+
+    {# ── Already claimed by somebody ──────────────────────────────────── #}
+    {% elseif activeClaim %}
+      {#
+        role="status" rather than role="alert": a screen reader should announce
+        this when the page is read, not interrupt whatever it was saying. Alert
+        is for things that have just gone wrong.
+      #}
+      <section class="profile-card" aria-labelledby="claimed-heading" role="status">
+        <h2 id="claimed-heading">This profile has already been claimed</h2>
+
+        <dl class="record-facts">
+          <dt>Claimed by</dt>
+          {#
+            Shown, not hidden. A physician finding their own record claimed by a
+            stranger needs to be able to see that — and the usual case is
+            entirely innocent: their own second account, or an assistant.
+          #}
+          <dd>{{ activeClaim.claimantLabel }}</dd>
+
+          <dt>Status</dt>
+          <dd>{{ activeClaim.status.label }}</dd>
+
+          {% if activeClaim.verifiedAt %}
+            <dt>Since</dt>
+            <dd>
+              <time datetime="{{ activeClaim.verifiedAt|date('c') }}">{{ activeClaim.verifiedAt|date('M j, Y') }}</time>
+            </dd>
+          {% endif %}
+        </dl>
+
+        <p>
+          If that is not right — and note that more than one provider here shares
+          a name, so it may be an honest mix-up — email
+          <a href="mailto:{{ supportEmail }}">{{ supportEmail }}</a> and a data
+          steward will sort it out.
+        </p>
+
+        <p>
+          <a class="button button--secondary" href="{{ path('hmfp_search_tool_profile_view', {'id': physician.id}) }}">
+            &laquo; Back to the profile
+          </a>
+        </p>
+      </section>
+
+    {# ── This user has a claim in flight ──────────────────────────────── #}
+    {% elseif pendingClaim %}
+      <section class="profile-card" aria-labelledby="pending-heading" role="status">
+        <h2 id="pending-heading">Check your email</h2>
+
+        <p>
+          We have already sent a confirmation link to
+          <strong>{{ app.user.emailAddress }}</strong>. Open it and you will be
+          asked for your NPI to finish.
+        </p>
+
+        {% if pendingClaim.tokenExpiresAt %}
+          <p class="hint">
+            That link stops working on
+            <time datetime="{{ pendingClaim.tokenExpiresAt|date('c') }}">{{ pendingClaim.tokenExpiresAt|date('M j, Y \\a\\t g:i A') }}</time>.
+          </p>
+        {% endif %}
+
+        <form method="post" action="{{ path('hmfp_search_tool_claim_request', {'physician': physician.id}) }}">
+          <input type="hidden" name="_token" value="{{ csrf_token('claim-' ~ physician.id) }}">
+          <button type="submit" class="button">Send the link again</button>
+        </form>
+
+        <p class="hint">
+          Sending a new link stops the old one working, so use the most recent
+          email.
+        </p>
+      </section>
+
+    {# ── The offer ────────────────────────────────────────────────────── #}
+    {% else %}
+      <section class="profile-card" aria-labelledby="offer-heading">
+        <h2 id="offer-heading">Claiming this profile</h2>
+
+        <p>
+          Claiming a profile links it to your account so that you can propose
+          changes to your own biography and clinical interests. A data steward
+          reviews anything you submit before it appears.
+        </p>
+
+        <h3>How it works</h3>
+        {# An ordered list because the steps genuinely are sequential. #}
+        <ol class="claim-steps">
+          <li>You confirm below.</li>
+          <li>
+            We email a link to <strong>{{ app.user.emailAddress }}</strong> — the
+            address on your account. We cannot send it anywhere else.
+          </li>
+          <li>You open the link and enter your NPI.</li>
+          <li>The profile is linked to your account.</li>
+        </ol>
+
+        {#
+          The honest warning. Put before the button rather than after it, since
+          a warning underneath the thing it is warning about has already been
+          skipped by the person who needed it.
+        #}
+        <div class="claim-warning">
+          <h3>Please only claim your own profile</h3>
+          <p>
+            Claims are recorded against your name and reviewed by a data steward.
+            If you manage a provider's information on their behalf, do not claim
+            their profile — email
+            <a href="mailto:{{ supportEmail }}">{{ supportEmail }}</a> instead and
+            you will be given access properly.
+          </p>
+          <p>
+            Several providers in this directory share a name with a colleague. If
+            you claim the wrong record a steward will have to undo it, so please
+            check the details below are yours.
+          </p>
+        </div>
+
+        <h3>The record you are claiming</h3>
+        <dl class="profile-facts">
+          <dt>Name</dt>
+          <dd>
+            {{ physician.legalName }}
+            {%- if physician.credentials is not empty %}, {{ physician.credentials }}{% endif %}
+          </dd>
+
+          {% if physician.departments|length %}
+            <dt>Department{{ physician.departments|length == 1 ? '' : 's' }}</dt>
+            <dd>
+              {%- for department in physician.departments -%}
+                {{ department.name }}{% if not loop.last %}, {% endif %}
+              {%- endfor -%}
+            </dd>
+          {% endif %}
+
+          {% if physician.facilities|length %}
+            <dt>Location{{ physician.facilities|length == 1 ? '' : 's' }}</dt>
+            <dd>
+              {%- for facility in physician.facilities -%}
+                {{ facility.name }}{% if not loop.last %}, {% endif %}
+              {%- endfor -%}
+            </dd>
+          {% endif %}
+        </dl>
+
+        {#
+          The NPI is NOT shown here, even though it is public information anyone
+          can look up in the CMS registry. Printing it on the page immediately
+          before asking for it would make the question decorative.
+        #}
+
+        <form method="post" action="{{ path('hmfp_search_tool_claim_request', {'physician': physician.id}) }}">
+          <input type="hidden" name="_token" value="{{ csrf_token('claim-' ~ physician.id) }}">
+
+          <div class="form-actions">
+            <button type="submit" class="button">Yes, this is me — email me a link</button>
+            <a class="button button--secondary" href="{{ path('hmfp_search_tool_profile_view', {'id': physician.id}) }}">
+              Cancel
+            </a>
+          </div>
+        </form>
+      </section>
+    {% endif %}
+
+  </div>
+{% endblock %}

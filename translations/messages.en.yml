@@ -25,6 +25,33 @@ audit:
         physician_edit.published: '%actor% proposed an edit for physician'
         physician_edit.rejected: '%actor% rejected the proposed physician edit'
         physician_edit.confirmed: '%actor% confirmed the proposed physician'
+        # Claims. Every key shares the claim. prefix so an admin can filter the
+        # whole subsystem with LIKE 'claim.%' — see AuditLogInterface on why the
+        # namespace exists.
+        claim.requested: '%actor% asked to claim the physician profile %target%'
+        claim.emailed: '%actor% was sent an email to claim the physician profile %target%'
+        claim.verified: '%actor% confirmed their identity and claimed the physician profile %target%'
+        claim.approved: '%actor% approved the claim for the physician profile %target%'
+        # Retired: the admin action now records an approval, not a verification, so
+        # that "a steward vouched" and "somebody cleared the self-service bar" are
+        # distinguishable by status rather than only by the method column.
+        claim.verified_by_admin: '%actor% verified the claim for the physician profile %target%'
+        claim.attempt_failed: '%actor% gave an NPI that did not match, claiming %target%'
+        claim.contested: '%actor% tried to claim a physician profile somebody else had just claimed (%target%)'
+        claim.rejected: '%actor% refused the claim on the physician profile %target%'
+        claim.revoked: '%actor% revoked the claim for the physician profile %target%'
+        claim.revoked_with_revert: '%actor% revoked the claim for %target% and reverted the edits made under it'
+        claim.mail_failed: '%actor% could not be sent a claim confirmation email for %target%'
+
+        # Retired spellings, kept so the rows already written with them still read
+        # as sentences rather than as raw keys. Nothing emits these any more.
+        # Delete them once no audit_logs row references them.
+        physician_claim.requested: '%actor% asked to claim the physician profile %target%'
+        physician_claim.emailed: '%actor% was sent an email to claim the physician profile %target%'
+        physician_claim.verified: '%actor% confirmed their identity and claimed the physician profile %target%'
+        physician_claim.attempt_failed: '%actor% gave an NPI that did not match, claiming %target%'
+        physician_claim.contested: '%actor% tried to claim a physician profile somebody else had just claimed (%target%)'
+        physician_claim.mail_failed: '%actor% could not be sent a claim confirmation email for %target%'
 two_factor:
     title: 'HMFP Search Tool - Two-Factor Authentication'
     description: 'Two-factor authentication (2FA) adds an extra layer of security to your account by requiring a second form of verification in addition to your password. This helps protect your account from unauthorized access, even if your password is compromised.'

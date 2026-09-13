@@ -1,0 +1,100 @@
+{#
+  The actions available on one claim.
+
+  Extracted so the queue and the full history offer the same buttons from one copy.
+  Two lists with hand-maintained duplicates of four CSRF-protected forms is how a
+  token id ends up drifting on one page and not the other.
+
+  Expects: claim (PhysicianClaim).
+
+  Each action is offered only where it can actually work. The controller guards
+  every one of them as well, because a URL can be typed — but a button whose only
+  possible outcome is an error message is worse than no button.
+
+  Wrapped in <details> so a row shows one [Actions] control instead of a stack of
+  four buttons. No JavaScript, and keyboard operation is free: Enter and Space
+  toggle a <summary>, and the open state reaches assistive technology without an
+  aria-expanded anybody has to keep in step. Styling lives in SCH's admin-cp.css
+  as .vb-actions, next to the navigation that uses the same pattern.
+
+  With CSS off — or in a browser without <details> — everything renders expanded,
+  which is a list of links and submit buttons. That is what it is.
+#}
+<details class="vb-actions">
+  {#
+    Named for the claim, so a screen-reader user tabbing down a long table hears
+    which row they are opening rather than twenty identical "Actions".
+  #}
+  <summary>Actions<span class="visually-hidden"> for the claim by {{ claim.claimantLabel }}</span></summary>
+
+<ul class="action-list">
+  {#
+    Approve, not verify. Verified means the claimant cleared the self-service bar
+    (an emailed link plus a public NPI); Approved means a steward who can ring the
+    department said yes. Offered on a pending claim AND on a self-verified one,
+    since confirming the latter is a real act — it is what clears the row from the
+    queue, and the only path that records which steward decided.
+  #}
+  {% if not claim.status.isFinal and not claim.status.isApproved %}
+    <li>
+      <form method="post" action="{{ path('hmfp_search_tool_admin_claim_approve', {'claim': claim.id}) }}" onsubmit="return confirm('{{ claim.grantsEditing ? 'Mark this claim as checked and approved?' : 'Approve this claim and let them propose edits to this profile?' }}');">
+        <input type="hidden" name="_token" value="{{ csrf_token('approve_claim_' ~ claim.id) }}">
+        <button class="button button--success" type="submit">
+          {#
+            Different word for a different act. On a pending claim this GRANTS
+            editing; on a self-verified one it changes nothing functional and simply
+            records that a human looked. Calling both "Approve" invites a steward to
+            think they are doing more, or less, than they are.
+          #}
+          {{ claim.grantsEditing ? 'Confirm Claim' : 'Approve Claim' }}
+        </button>
+      </form>
+    </li>
+  {% endif %}
+
+  {#
+    Revoke WITHDRAWS something live: it frees the physician's exclusive claim slot
+    so the right person can claim afterwards. Reject REFUSES something that never
+    went live. Not synonyms — one says the claim was never good, the other says it
+    was acted on and then taken back, and only the second makes the claimant's past
+    edits worth re-reading.
+
+    Gated on grantsEditing() rather than on case names: it is the question the code
+    actually cares about, and it stays correct if a status is ever added.
+  #}
+  {% if claim.grantsEditing %}
+    <li>
+      <form method="post" action="{{ path('hmfp_search_tool_admin_claim_revoke', {'claim': claim.id}) }}" onsubmit="return confirm('Withdraw this claim? The edits they have already published stay live.');">
+        <input type="hidden" name="_token" value="{{ csrf_token('revoke_claim_' ~ claim.id) }}">
+        <button class="button button--danger" type="submit">Revoke Claim</button>
+      </form>
+    </li>
+
+    {#
+      The harsher of the two, kept separate on purpose.
+
+      Revoke alone is for a claim that should no longer exist — somebody moved
+      department, or the record was merged — and their edits are probably still
+      accurate. This one is for a claimant who should never have held the record,
+      so everything they published here goes back whether or not anybody read it.
+
+      Only THEIR edits are reverted, not the physician's whole history. The confirm
+      text says so, because "revert edits" could reasonably be read as wiping the
+      profile.
+    #}
+    <li>
+      <form method="post" action="{{ path('hmfp_search_tool_admin_claim_revoke_revert', {'claim': claim.id}) }}" onsubmit="return confirm('Withdraw this claim AND roll back every edit this claimant published on this profile? Edits made by anyone else are left alone. This can be undone by approving each edit again.');">
+        <input type="hidden" name="_token" value="{{ csrf_token('revoke_revert_claim_' ~ claim.id) }}">
+        <button class="button button--danger" type="submit">Revoke &amp; revert their edits</button>
+      </form>
+    </li>
+  {% elseif not claim.status.isFinal %}
+    <li>
+      <form method="post" action="{{ path('hmfp_search_tool_admin_claim_reject', {'claim': claim.id}) }}" onsubmit="return confirm('Refuse this claim? They will not be able to edit this profile.');">
+        <input type="hidden" name="_token" value="{{ csrf_token('reject_claim_' ~ claim.id) }}">
+        <button class="button button--danger" type="submit">Reject Claim</button>
+      </form>
+    </li>
+  {% endif %}
+</ul>
+</details>

@@ -1,0 +1,96 @@
+{% extends '@HMFPSearchTool/admin/layout.html.twig' %}
+
+{% block admin_page_title %}Claims{% endblock %}
+
+{% block content %}
+  <h1>Claims</h1>
+  <p>This is a list of all claims.</p>
+
+  {% if claims is defined %}
+    <table class="table table-striped">
+      <thead>
+        <tr scope="row">
+          <th scope="col">ID</th>
+          <th scope="col">Physician</th>
+          <th scope="col">Claimant</th>
+          <th scope="col">Status</th>
+          <th scope="col">Claimed At</th>
+          <th scope="col">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if claims|length > 0 %}
+          {% for claim in claims %}
+            <tr scope="row">
+              <td scope="col">{{ claim.id }}</td>
+              <td scope="col"><a href="{{ path('hmfp_search_tool_profile_view', {'id': claim.physician.id}) }}" target="_blank">{{ claim.physician.legalName }}</a></td>
+              <td scope="col"><a href="{{ path('hmfp_search_tool_admin_user_edit', {'id': claim.getUser().getId()}) }}">{{ claim.getUser().getEmailAddress() }}</a></td>
+              {#
+                Status, then the note underneath it.
+
+                The note is the more useful of the two and often the only thing that
+                explains the row: a status says "refused", a note says "wrong Michael
+                Murphy, rang the department". Every action that changes a claim writes
+                one, so this is where a steward picks up what the last person decided
+                and why — without opening the audit log.
+
+                How it was established is shown alongside, because "approved" answers
+                a different question from "email and NPI" or "a steward vouched", and
+                the two together are what makes a claim readable at a glance.
+              #}
+              <td>
+                {{ claim.status.label }}
+                {% if claim.method %}
+                  <br><span class="muted">{{ claim.method.label }}</span>
+                {% endif %}
+                {% if claim.note %}
+                  <p class="claim-note">{{ claim.note }}</p>
+                {% endif %}
+                {% if claim.decidedBy %}
+                  <span class="muted">
+                    decided by {{ claim.decidedBy.emailAddress }}
+                    {%- if claim.decidedAt %},
+                      <time datetime="{{ claim.decidedAt|date('c') }}">{{ claim.decidedAt|date('M j, Y') }}</time>
+                    {%- endif %}
+                  </span>
+                {% endif %}
+              </td>
+              <td>
+                <time datetime="{{ claim.claimedAt|date('c') }}">{{ claim.claimedAt|date('M j, Y g:i A') }}</time>
+              </td>
+              {#
+                Actions live in a partial so the queue view offers the same buttons
+                from one copy — four CSRF-protected forms maintained twice is how a
+                token id drifts on one page and not the other.
+              #}
+              <td>{{ include('@HMFPSearchTool/admin/claims/_claim_actions.html.twig', {claim: claim}) }}</td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr scope="row">
+            <td colspan="6" scope="col">No claims found.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    {% if pages > 1 %}
+      <div class="pagination-wrapper" style="display: flex; justify-content: center; margin-top: 1em;">
+        <nav class="pagination" aria-label="Claims pages">
+          {% if page > 1 %}
+            <a href="{{ path('hmfp_search_tool_admin_claims', {page: page - 1}) }}" rel="prev">← Previous</a>
+          {% else %}
+            <span class="muted" aria-hidden="true">← Previous</span>
+          {% endif %}
+          <span>Page {{ page }} of {{ pages }}</span>
+          {% if page < pages %}
+            <a href="{{ path('hmfp_search_tool_admin_claims', {page: page + 1}) }}" rel="next">Next →</a>
+          {% else %}
+            <span class="muted" aria-hidden="true">Next →</span>
+          {% endif %}
+        </nav>
+      </div>
+    {% endif %}
+
+  {% endif %}
+{% endblock %}

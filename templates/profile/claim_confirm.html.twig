@@ -1,0 +1,132 @@
+{#
+  Step 3 of claiming a profile: the emailed link has been opened, and this asks
+  for the NPI.
+
+  Accessibility notes, since this is the page with a real input on it:
+
+    - The label is a real <label for>, not placeholder text. Placeholders vanish
+      the moment you type, which is exactly when someone re-reading the question
+      needs it, and they are invisible to some screen readers.
+    - inputmode="numeric" brings up a number pad on a phone without the spinner,
+      scroll-wheel surprises and locale quirks of type="number".
+    - autocomplete="off": an NPI is not a field a browser should remember or
+      offer to fill from another record.
+    - aria-describedby ties the hint AND the error to the input, so a screen
+      reader reads the requirement and the problem as part of the field rather
+      than as loose text somewhere on the page.
+    - The error region is role="alert" — unlike the status messages elsewhere,
+      this one SHOULD interrupt, because it is the answer to what the user just
+      did.
+
+  Errors arrive as flash messages from the controller (wrong NPI, expired link)
+  and are rendered by the layout, so this page only has to handle the states the
+  layout cannot see.
+#}
+{% extends '@HMFPSearchTool/search/layout.html.twig' %}
+
+{% set displayName = physician.preferredFullName is not empty
+  ? physician.preferredFullName
+  : physician.legalName %}
+
+{% block search_page_title %}Confirm your profile{% endblock %}
+
+{% block content %}
+
+  <header class="profile-header">
+    <p class="profile-eyebrow">Provider profile</p>
+    <h1>Confirm you are {{ displayName }}</h1>
+  </header>
+
+  <div class="claim-layout">
+
+    {% if expired %}
+      {#
+        The link has run out. Told apart from "not a valid link" on purpose —
+        somebody who left the email for a week should be told the link aged out,
+        not left wondering whether they mistyped something.
+      #}
+      <section class="profile-card" aria-labelledby="expired-heading" role="alert">
+        <h2 id="expired-heading">This link has expired</h2>
+        <p>
+          Confirmation links last two days. Start again and we will send a fresh
+          one to {{ app.user.emailAddress }}.
+        </p>
+        <p>
+          <a class="button" href="{{ path('hmfp_search_tool_claim_start', {'physician': physician.id}) }}">
+            Start again
+          </a>
+        </p>
+      </section>
+
+    {% elseif attemptsLeft <= 0 %}
+      <section class="profile-card" aria-labelledby="locked-heading" role="alert">
+        <h2 id="locked-heading">This claim is closed</h2>
+        <p>
+          There have been too many incorrect attempts on this claim, so it will
+          not accept any more. Email
+          <a href="mailto:{{ supportEmail }}">{{ supportEmail }}</a> and a data
+          steward will link your account by hand.
+        </p>
+      </section>
+
+    {% else %}
+      <section class="profile-card" aria-labelledby="confirm-heading">
+        <h2 id="confirm-heading">One last step</h2>
+
+        <p>
+          You are confirming that you are
+          <strong>{{ physician.legalName }}{% if physician.credentials is not empty %}, {{ physician.credentials }}{% endif %}</strong>.
+          Enter your ten-digit National Provider Identifier to finish.
+        </p>
+
+        <form method="post" action="{{ path('hmfp_search_tool_claim_confirm', {'token': token}) }}" class="claim-form">
+          <input type="hidden" name="_token" value="{{ csrf_token('claim-confirm-' ~ claim.id) }}">
+
+          <div class="form-row">
+            <label for="npi">Your NPI number</label>
+
+            <input
+              type="text"
+              id="npi"
+              name="npi"
+              inputmode="numeric"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="14"
+              size="14"
+              required
+              aria-describedby="npi-hint"
+            >
+
+            {#
+              Says both what is wanted and that formatting does not matter — the
+              controller strips everything but digits, so somebody reading a
+              number off a letter with dashes in it is not wrong and should not
+              be made to feel wrong.
+            #}
+            <p class="hint" id="npi-hint">
+              Ten digits. Spaces and dashes are fine.
+              {% if attemptsLeft <= 2 %}
+                You have {{ attemptsLeft }} attempt{{ attemptsLeft == 1 ? '' : 's' }} left.
+              {% endif %}
+            </p>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="button">Confirm and link my account</button>
+            <a class="button button--secondary" href="{{ path('hmfp_search_tool_profile_view', {'id': physician.id}) }}">
+              Cancel
+            </a>
+          </div>
+        </form>
+
+        <p class="hint">
+          Not sure of your NPI? It is on your credentialing paperwork, or email
+          <a href="mailto:{{ supportEmail }}">{{ supportEmail }}</a> and somebody
+          will help rather than guess.
+        </p>
+      </section>
+    {% endif %}
+
+  </div>
+{% endblock %}

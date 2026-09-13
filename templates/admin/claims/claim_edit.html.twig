@@ -1,0 +1,17 @@
+{% extends '@HMFPSearchTool/admin/layout.html.twig' %}
+
+{% block admin_page_title %}Edit Claim{% endblock %}
+
+{% block content %}
+  <h1>Edit Claim</h1>
+
+  <p>Claim ID: {{ claim.id }}</p>
+  <p>Physician: <a href="{{ path('hmfp_search_tool_profile_view', {'id': claim.physician.id}) }}" target="_blank">{{ claim.physician.legalName }}</a></p>
+  <p>Claimant: <a href="{{ path('hmfp_search_tool_admin_user_edit', {'id': claim.getUser().getId()}) }}">{{ claim.getUser().getEmailAddress() }}</a></p>
+  <p>Status: {{ claim.status.label }}</p>
+  <p>Claimed At: {{ claim.getClaimedAt|date('Y-m-d H:i:s') }}</p>
+
+  <p>Form: {{ form_widget(form) }}</p>
+
+  {# Add form or actions to edit the claim here #}
+{% endblock %}

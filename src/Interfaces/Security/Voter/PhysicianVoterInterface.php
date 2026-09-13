@@ -28,4 +28,9 @@ interface PhysicianVoterInterface {
    */
   public const PERMISSION_CAN_VIEW_ALL_PHYSICIAN_EDITS = 'can_view_all_physician_edits';
 
+  /**
+   * Whether or not someone can claim a physician.
+   */
+  public const PERMISSION_CAN_CLAIM_PHYSICIAN = 'can_claim_physician';
+
 }
