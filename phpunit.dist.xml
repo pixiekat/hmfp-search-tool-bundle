@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Lets the bundle be tested on its own rather than only from inside the host
+  application. The bundle is its own repository, so a commit that changes, say,
+  PhysicianClaim::verify() should be verifiable in THIS repository — without it,
+  a bundle-only change cannot be checked at all until somebody opens the app.
+
+  Requires a standalone checkout with its own `composer install`: there is no
+  nested vendor/ when the bundle is installed inside an application, so
+  bootstrap="vendor/autoload.php" resolves only when the bundle is cloned by
+  itself. From inside the app, the app's own phpunit.dist.xml has a second
+  testsuite pointed at this directory, so one run covers both.
+
+  UNIT TESTS ONLY, deliberately. Everything here instantiates objects and calls
+  methods — no kernel, no database, no container. Functional tests live in the
+  application, because several of them assert behaviour that comes from the APP's
+  configuration (security.yaml's access_control and role_hierarchy, the session
+  storage factory, messenger routing) rather than from bundle code. A bundle-side
+  functional test would need its own minimal kernel, and would then be asserting a
+  configuration nobody deploys — passing happily while the real application was
+  wide open. That is worse than having no test.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         failOnDeprecation="true"
+         failOnWarning="true"
+         failOnNotice="true"
+         cacheDirectory=".phpunit.cache">
+    <testsuites>
+        <testsuite name="HMFP Search Tool Bundle">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+
+    <source>
+        <include>
+            <directory>src</directory>
+        </include>
+    </source>
+</phpunit>
