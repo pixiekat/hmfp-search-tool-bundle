@@ -4,6 +4,7 @@ namespace Pixiekat\HMFPSearchToolBundle\Security\Voter;
 
 use Pixiekat\HMFPSearchToolBundle\Entity;
 use Pixiekat\HMFPSearchToolBundle\Interfaces;
+use Pixiekat\HMFPSearchToolBundle\Traits;
 use Pixiekat\SymfonyHelpers\Security as PixieHelperSecurity;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
@@ -12,6 +13,8 @@ use Symfony\Component\Security\Core\Authorization\Voter\Voter;
 use Symfony\Component\Security\Core\User\UserInterface;
 
 class PhysicianVoter extends PixieHelperSecurity\Voter\BaseVoter implements Interfaces\Security\Voter\PhysicianVoterInterface {
+  use Traits\Security\Voter\AdminVoterTrait;
+
 
   protected function supports(string $attribute, mixed $subject): bool {
     $attributes = $this->getAttributes();

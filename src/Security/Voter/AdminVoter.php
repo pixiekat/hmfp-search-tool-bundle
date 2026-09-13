@@ -4,6 +4,7 @@ namespace Pixiekat\HMFPSearchToolBundle\Security\Voter;
 
 use Pixiekat\HMFPSearchToolBundle\Entity;
 use Pixiekat\HMFPSearchToolBundle\Interfaces;
+use Pixiekat\HMFPSearchToolBundle\Traits;
 use Pixiekat\SymfonyHelpers\Security as PixieHelperSecurity;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
@@ -12,6 +13,7 @@ use Symfony\Component\Security\Core\Authorization\Voter\Voter;
 use Symfony\Component\Security\Core\User\UserInterface;
 
 class AdminVoter extends PixieHelperSecurity\Voter\BaseVoter implements Interfaces\Security\Voter\AdminVoterInterface {
+  use Traits\Security\Voter\AdminVoterTrait;
 
   protected function supports(string $attribute, mixed $subject): bool {
     $attributes = $this->getAttributes();
@@ -38,17 +40,5 @@ class AdminVoter extends PixieHelperSecurity\Voter\BaseVoter implements Interfac
       self::PERMISSION_CAN_APPROVE_EDITS => $this->hasGlobalAdminRole($user, $adminRoles) || $this->security->isGranted(Interfaces\Entity\HMFPSearchToolUserInterface::ROLE_DATA_STEWARD),
       default => false,
     };
-  }
-
-  private function getAdminRoles(): array {
-    return [
-      'ROLE_SUPER_ADMIN',
-      Interfaces\Entity\HMFPSearchToolUserInterface::ROLE_SYSADMIN,
-      Interfaces\Entity\HMFPSearchToolUserInterface::ROLE_ADMIN,
-      Interfaces\Entity\HMFPSearchToolUserInterface::ROLE_CONTENT_ADMIN,
-      Interfaces\Entity\HMFPSearchToolUserInterface::ROLE_DATA_STEWARD,
-      Interfaces\Entity\HMFPSearchToolUserInterface::ROLE_DEPARTMENT_EDITOR,
-      Interfaces\Entity\HMFPSearchToolUserInterface::ROLE_ANALYTICS_VIEWER,
-    ];
   }
 }
