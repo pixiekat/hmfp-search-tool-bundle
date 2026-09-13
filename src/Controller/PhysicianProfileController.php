@@ -7,6 +7,7 @@ use Pixiekat\HMFPSearchToolBundle\Entity;
 use Pixiekat\HMFPSearchToolBundle\Enum\EditableField;
 use Pixiekat\HMFPSearchToolBundle\Enum\EditReviewStatus;
 use Pixiekat\HMFPSearchToolBundle\Enum\PhysicianVocabulary;
+use Pixiekat\HMFPSearchToolBundle\Interfaces;
 use Pixiekat\HMFPSearchToolBundle\Repository;
 use Pixiekat\HMFPSearchToolBundle\Services\PhysicianEditManager;
 use Pixiekat\HMFPSearchToolBundle\Services\PhysicianTaxonomyManager;
@@ -29,6 +30,7 @@ final class PhysicianProfileController extends AbstractController {
   public function __construct(
     private readonly EntityManagerInterface $entityManager,
     private readonly Repository\PhysicianRepository $physicians,
+    private readonly Repository\PhysicianClaimRepository $claims,
     private readonly Repository\PhysicianEditRepository $edits,
     private readonly PhysicianEditManager $editManager,
     private readonly PhysicianTaxonomyManager $taxonomy,
@@ -38,6 +40,7 @@ final class PhysicianProfileController extends AbstractController {
   #[Route('/physicians/{id}', name: 'hmfp_search_tool_profile_view', requirements: ['id' => '\\d+'], methods: ['GET'])]
   public function viewPhysician(Entity\Physician $physician): Response {
     $edits = $this->edits->findHistoryFor($physician);
+    $hasClaim = $this->claims->isPhysicianUnclaimed($physician) === false;
     $last_edit = null;
     if (!empty($edits)) {
       $last_edit = $edits[0];
@@ -48,26 +51,30 @@ final class PhysicianProfileController extends AbstractController {
       'bio' => $this->editManager->resolve($physician, EditableField::Bio),
       'interests' => $this->taxonomy->termsFor($physician, PhysicianVocabulary::ClinicalInterest),
       'edits' => $edits,
+      'has_claim' => $hasClaim,
       'lastSeenInImportAt' => $physician->getLastSeenInImportAt(),
       'last_edit' => $last_edit,
     ]);
   }
 
-  #[IsGranted('ROLE_USER')]
-  #[Route('/physicians/{id}/edit', name: 'hmfp_search_tool_profile_edit', requirements: ['id' => '\\d+'], methods: ['GET'])]
-  public function editPhysician(int $id): Response {
-    return $this->render('@HMFPSearchTool/profile/edit.html.twig', $this->viewData($this->requirePhysician($id)));
+  #[IsGranted(Interfaces\Security\Voter\PhysicianVoterInterface::PERMISSION_CAN_EDIT_PHYSICIAN, subject: 'physician')]
+  #[Route('/physicians/{physician}/edit', name: 'hmfp_search_tool_profile_edit', requirements: ['physician' => '\\d+'], methods: ['GET'])]
+  public function editPhysician(Entity\Physician $physician): Response {
+    return $this->render('@HMFPSearchTool/profile/edit.html.twig', $this->viewData($this->requirePhysician($physician->getId())));
   }
 
-  #[IsGranted('ROLE_USER')]
-  #[Route('/physicians/{id}/edit-profile', name: 'hmfp_search_tool_profile_submit', requirements: ['id' => '\\d+'], methods: ['POST'])]
-  public function submit(int $id, Request $request): Response {
-    $physician = $this->requirePhysician($id);
-    $user      = $this->currentUser();
+  // The route placeholder is named {physician} so that the resolver hydrates the
+  // entity AND #[IsGranted] can name it as its subject. With an {id} placeholder
+  // and an int argument there is no 'physician' argument for the attribute to
+  // point at, and the voter is handed nothing to scope against.
+  #[IsGranted(Interfaces\Security\Voter\PhysicianVoterInterface::PERMISSION_CAN_EDIT_PHYSICIAN, subject: 'physician')]
+  #[Route('/physicians/{physician}/edit-profile', name: 'hmfp_search_tool_profile_submit', requirements: ['physician' => '\\d+'], methods: ['POST'])]
+  public function submit(Entity\Physician $physician, Request $request): Response {
+    $user = $this->currentUser();
 
-    if (!$this->isCsrfTokenValid('edit-profile-' . $id, (string) $request->request->get('_token'))) {
+    if (!$this->isCsrfTokenValid('edit-profile-' . $physician->getId(), (string) $request->request->get('_token'))) {
       $this->addFlash('error', 'Invalid security token — please try again.');
-      return $this->redirectToRoute('hmfp_search_tool_profile_edit', ['id' => $physician->getId()]);
+      return $this->redirectToRoute('hmfp_search_tool_profile_edit', ['physician' => $physician->getId()]);
     }
 
     $proposed = 0;
@@ -107,7 +114,7 @@ final class PhysicianProfileController extends AbstractController {
 
     if ($proposed === 0) {
       $this->addFlash('notice', 'Nothing changed, so nothing was saved.');
-      return $this->redirectToRoute('hmfp_search_tool_profile_edit', ['id' => $physician->getId()]);
+      return $this->redirectToRoute('hmfp_search_tool_profile_edit', ['physician' => $physician->getId()]);
     }
 
     $this->entityManager->flush();
@@ -118,7 +125,7 @@ final class PhysicianProfileController extends AbstractController {
       $proposed === 1 ? '' : 's',
     ));
 
-    return $this->redirectToRoute('hmfp_search_tool_profile_edit', ['id' => $physician->getId()]);
+    return $this->redirectToRoute('hmfp_search_tool_profile_edit', ['physician' => $physician->getId()]);
   }
 
   /**

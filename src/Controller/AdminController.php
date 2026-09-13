@@ -25,24 +25,59 @@ final class AdminController extends AbstractController {
     private readonly RequestStack $requestStack,
     private readonly UserPasswordHasherInterface $passwordHasher,
     private readonly AuditLogManager $auditLogManager,
-    private readonly Repository\SearchEventRepository $searchEvents,
+    private readonly Repository\PhysicianClaimRepository $claims,
   ) {  }
 
-  #[Route('/statistics', name: 'hmfp_search_tool_statistics')]
-  public function searchStatsBlock(): Response {
-    $totalPhysicians = $this->entityManager->getRepository(Entity\Physician::class)->count([]);
-    $totalDepartments = $this->entityManager->getRepository(Entity\Department::class)->count([]);
-    $totalFacilities = $this->entityManager->getRepository(Entity\Facility::class)->count([]);
+  // get all claims for an admin to review, with a link to the claim review page for each claim.
+  #[Route('/claims', name: 'hmfp_search_tool_admin_claims')]
+  public function listClaims(): Response {
+    $perPage = 25;
+    $page = max(1, $this->requestStack->getCurrentRequest()->query->getInt('page', 1));
+    $paginator = $this->entityManager->getRepository(Entity\PhysicianClaim::class)->paginateStandalone($page, $perPage, ['claimedAt' => 'DESC']);
+    $total = count($paginator);
+    return $this->render('@HMFPSearchTool/admin/claims/claims_list.html.twig', [
+      'claims' => $paginator,
+      'page' => $page,
+      'pages' => max(1, (int) ceil($total / $perPage)),
+      'total' => $total,
+    ]);
+  }
 
-    // top matched terms for the last 30 days, ordered by count descending, limited to 10 results.
-    $topMatchedTerms = $this->searchEvents->topMatchedTerms(\DateTimeImmutable::createFromFormat('Y-m-d', date('Y-m-d', strtotime('-30 days'))), 10);
+  /**
+   * The stewards' work queue: claims still needing a human, oldest first.
+   *
+   * Separate from listClaims(), which is the full history newest-first. A queue and
+   * an archive answer different questions — "what do I have to do" versus "what
+   * happened to this record" — and one list ordered one way cannot do both. Same
+   * split as physician_edits' queue.html.twig alongside history_all.html.twig.
+   *
+   * Not paginated on purpose: if this needs more than one page, the queue is not
+   * being worked and the answer is staffing rather than paging. The limit is a
+   * safety valve, and the heading says the true total so a backlog is visible
+   * rather than quietly truncated.
+   */
+  #[Route('/claims/queue', name: 'hmfp_search_tool_admin_claims_queue')]
+  public function claimsQueue(): Response {
+    $claims = $this->claims->findOpenQueueWithRelations();
 
+    return $this->render('@HMFPSearchTool/admin/claims/claims_queue.html.twig', [
+      'claims' => $claims,
+      'total'  => $this->claims->countOpen(),
+      'shown'  => count($claims),
+    ]);
+  }
 
-    return $this->render('@HMFPSearchTool/admin/search_stats.html.twig', [
-      'totalPhysicians' => $totalPhysicians,
-      'totalDepartments' => $totalDepartments,
-      'totalFacilities' => $totalFacilities,
-      'topMatchedTerms' => $topMatchedTerms,
+  #[Route('/claim/{id}/edit', name: 'hmfp_search_tool_admin_claim_edit', requirements: ['id' => '\d+'])]
+  public function editClaim(Entity\PhysicianClaim $claim): Response {
+    $form = $this->createForm(Form\ClaimEditFormType::class, $claim);
+    $form->handleRequest($this->requestStack->getCurrentRequest());
+    if ($form->isSubmitted() && $form->isValid()) {
+      $this->entityManager->flush();
+      return $this->redirectToRoute('hmfp_search_tool_admin_claims');
+    }
+    return $this->render('@HMFPSearchTool/admin/claims/claim_edit.html.twig', [
+      'claim' => $claim,
+      'form' => $form,
     ]);
   }
 

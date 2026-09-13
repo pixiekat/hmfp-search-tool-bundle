@@ -406,7 +406,7 @@
             {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\PhysicianVoterInterface::PERMISSION_CAN_EDIT_PHYSICIAN'), physician) %}
               {# Propose edit #}
               <div class="propose-edit">
-                <a class="button" href="{{ path('hmfp_search_tool_profile_edit', { id: physician.id }) }}">Propose edit</a>
+                <a class="button" href="{{ path('hmfp_search_tool_profile_edit', { physician: physician.id }) }}">Propose edit</a>
               </div>
             {% endif %}
           </li>

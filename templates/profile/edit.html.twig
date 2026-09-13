@@ -84,7 +84,7 @@
         records who made it, and can be reverted.
       </p>
 
-      <form method="post" action="{{ path('hmfp_search_tool_profile_submit', {'id': physician.id}) }}" class="profile-form">
+      <form method="post" action="{{ path('hmfp_search_tool_profile_submit', {'physician': physician.id}) }}" class="profile-form">
         <input type="hidden" name="_token" value="{{ csrf_token('edit-profile-' ~ physician.id) }}">
 
         <div class="field">

@@ -87,7 +87,7 @@
           #}
           <p class="muted">
             No biography has been added yet.
-            {%- if canEdit %} <a href="{{ path('hmfp_search_tool_profile_edit', {'id': physician.id}) }}">Propose one</a>.{% endif %}
+            {%- if canEdit %} <a href="{{ path('hmfp_search_tool_profile_edit', {'physician': physician.id}) }}">Propose one</a>.{% endif %}
           </p>
         {% endif %}
       </section>
@@ -206,8 +206,9 @@
           <h2 id="actions-heading">Actions</h2>
           <ul class="action-list">
             {% if canEdit %}
-              <li><a class="button" href="{{ path('hmfp_search_tool_profile_edit', {'id': physician.id}) }}">Propose an edit</a></li>
+              <li><a class="button" href="{{ path('hmfp_search_tool_profile_edit', {'physician': physician.id}) }}">Propose an edit</a></li>
             {% endif %}
+            <li><a class="button" href="{{ path('hmfp_search_tool_claim_start', {'physician': physician.id}) }}">Claim this profile</a></li>
             {% if canSearch %}
               {#
                 history.back() keeps the user's filters and scroll position, which

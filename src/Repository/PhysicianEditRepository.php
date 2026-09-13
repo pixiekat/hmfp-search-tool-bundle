@@ -62,6 +62,39 @@ class PhysicianEditRepository extends ServiceEntityRepository {
    *
    * @return Entity\PhysicianEdit[]
    */
+  /**
+   * The live edits one author made to one physician.
+   *
+   * For rolling back a bad claim: the question is "what did THIS person publish
+   * here", not "what has been published here". Reverting every field wholesale
+   * would also discard edits made by stewards, or by the rightful claimant before
+   * the record changed hands — which turns undoing one person's work into
+   * destroying everybody's.
+   *
+   * Matched on the foreign key rather than on editedByLabel, because the label is
+   * a snapshot of a display name and two people can share one. The FK is null only
+   * for edits with no account behind them, which by definition are not a
+   * claimant's.
+   *
+   * Ordered oldest first, so a caller rejecting them in sequence walks the history
+   * forwards and each rejection falls back to the edit that actually preceded it.
+   *
+   * @return list<Entity\PhysicianEdit>
+   */
+  public function findPublishedByAuthorFor(Entity\Physician $physician, Entity\User $author): array {
+    return $this->createQueryBuilder('e')
+      ->where('e.physician = :physician')
+      ->andWhere('e.editedBy = :author')
+      ->andWhere('e.reviewStatus IN (:published)')
+      ->setParameter('physician', $physician)
+      ->setParameter('author', $author)
+      ->setParameter('published', EditReviewStatus::publishedValues())
+      ->orderBy('e.editedAt', 'ASC')
+      ->addOrderBy('e.id', 'ASC')
+      ->getQuery()
+      ->getResult();
+  }
+
   public function findPublishedFor(Entity\Physician $physician, EditableField $field): array {
     return $this->createQueryBuilder('e')
       ->where('e.physician = :physician')
