@@ -21,19 +21,31 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Imports the provider demographics extract into `physicians` and `departments`.
+ * Imports the provider demographics extract into `physicians`, `departments`,
+ * `facilities` and the shared taxonomy (specialty and language terms).
  *
- * Scope: A first pass over a twenty-column extract. Three of those columns are
- * currently modelled; the rest (NPI, specialty, languages, facility, booking
- * URLs, …) are read past and ignored.
+ * Scope: the extract has twenty columns. These are modelled; the rest (suffix,
+ * image_url, virtual_care, booking URLs, …) are read past and ignored.
  *
- *   Physician::legalName    ← first_name + middle_name + last_name
- *   Physician::credentials  ← degree
- *   Department::name        ← department, split on ';'
- *   Physician::departments  ← the many-to-many built from the above
+ *   Physician::credId            ← cred_id (the identity — see below)
+ *   Physician::legalName         ← first_name + middle_name + last_name
+ *   Physician::credentials       ← degree
+ *   Physician::npi               ← npi
+ *   Physician::gender            ← gender
+ *   Physician::phone             ← preferred_phone_number
+ *   Physician::preferredFullName ← preferred_full_name
+ *   Department::name             ← department, split on ';'
+ *   Facility::name               ← facility_name, trailing commas stripped
+ *   Term (specialty vocabulary)  ← specialty, split on ';'
+ *   Term (language vocabulary)   ← languages, split on ','
+ *
+ * Departments, facilities and both term sets become many-to-many links on the
+ * physician, unioned across that provider's repeat rows.
  *
  * self::COLUMNS is the seam to widen when the entities grow: add the header
- * name there, then read it in the import pass.
+ * name there, then wire it through the import pass. The README's "Adding a
+ * column from the extract" lists every place that needs touching — missing the
+ * change check in importPhysicians() is the easy one to forget.
  *
  * The file is read twice, which looks wasteful until you try to avoid it.
  *
@@ -272,9 +284,13 @@ final class ImportPhysiciansCommand extends Command {
         carry one, and inventing a value would be indistinguishable from a real
         code later. Fill them in through the admin UI.
 
-        Re-running is safe: physicians already in the table (matched on legal name
-        plus credentials) and departments already in the table (matched on name)
-        are skipped rather than duplicated.
+        Re-running is safe. Physicians are matched on <comment>cred_id</comment>: a known one is
+        updated in place (or left alone if nothing changed), an unknown one is
+        inserted. Departments, facilities and terms already in the database
+        (matched on name, ignoring case) are reused rather than duplicated.
+
+        Nothing is ever deleted. A physician missing from the file is reported
+        under Departures and left in place.
 
         Bulk imports should be run with <info>--no-debug</info> so the profiler does not
         collect every INSERT.
@@ -1739,12 +1755,16 @@ final class ImportPhysiciansCommand extends Command {
   }
 
   /**
-   * Builds the key used to decide "have we already got this person?".
+   * Builds the name-plus-degree key used ONLY for adoption.
    *
-   * Case-folded so a later extract that changes "MacDonald" to "Macdonald" does
-   * not re-import the same physician. This is the stopgap identity discussed in
-   * the class docblock — replace it with a cred_id lookup once that column
-   * exists.
+   * No longer an identity. cred_id is — see the class docblock. This key now
+   * does one job: letting a physician row that predates the cred_id column (or
+   * was created by hand, with no cred_id) be matched once and given its
+   * cred_id. loadImportIndex() only builds it for NULL-cred_id rows, so it can
+   * never match an already-identified physician.
+   *
+   * Case-folded so a later extract that changes "MacDonald" to "Macdonald" is
+   * still recognised as the same unadopted row.
    */
   private function signature(string $legalName, string $credentials): string {
     return $this->normalise($legalName) . '|' . $this->normalise($credentials);
