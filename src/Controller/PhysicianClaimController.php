@@ -664,9 +664,20 @@ final class PhysicianClaimController extends AbstractController {
           'supportEmail' => self::SUPPORT_EMAIL,
         ]);
 
-      if ($this->mailer->send($email)) {
-        $this->auditLogManager->log('claim.emailed', $claim, ['physicianId' => $claim->getPhysician()->getId(), 'time' => new \DateTime()->format('Y-m-d H:i:s'), 'user' => $claim->getUser()->getId()], flush: false);
-      }
+      // MailerInterface::send() returns void — success is "it did not throw".
+      // This used to read `if ($this->mailer->send($email))`, and since void is
+      // falsy the audit line below never ran, so claim.emailed was never written.
+      // A failure lands in the catch below instead.
+      $this->mailer->send($email);
+
+      // Flushed (the default) rather than flush: false. This runs AFTER
+      // request()'s last flush, and nothing flushes later in that request, so a
+      // deferred write would quietly be thrown away with the entity manager.
+      $this->auditLogManager->log('claim.emailed', $claim, [
+        'physicianId' => $claim->getPhysician()->getId(),
+        'time'        => new \DateTime()->format('Y-m-d H:i:s'),
+        'user'        => $claim->getUser()->getId(),
+      ]);
 
     }
     catch (\Throwable $e) {
