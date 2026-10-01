@@ -78,12 +78,12 @@
       accurate. This one is for a claimant who should never have held the record,
       so everything they published here goes back whether or not anybody read it.
 
-      Only THEIR edits are reverted, not the physician's whole history. The confirm
-      text says so, because "revert edits" could reasonably be read as wiping the
-      profile.
+      Only edits made THROUGH THIS CLAIM are reverted — the claimant's and their
+      delegates' — not the physician's whole history. The confirm text says so,
+      because "revert edits" could reasonably be read as wiping the profile.
     #}
     <li>
-      <form method="post" action="{{ path('hmfp_search_tool_admin_claim_revoke_revert', {'claim': claim.id}) }}" onsubmit="return confirm('Withdraw this claim AND roll back every edit this claimant published on this profile? Edits made by anyone else are left alone. This can be undone by approving each edit again.');">
+      <form method="post" action="{{ path('hmfp_search_tool_admin_claim_revoke_revert', {'claim': claim.id}) }}" onsubmit="return confirm('Withdraw this claim AND roll back every edit published on this profile by the claimant or their delegates? Edits made by anyone else are left alone. This can be undone by approving each edit again.');">
         <input type="hidden" name="_token" value="{{ csrf_token('revoke_revert_claim_' ~ claim.id) }}">
         <button class="button button--danger" type="submit">Revoke &amp; revert their edits</button>
       </form>

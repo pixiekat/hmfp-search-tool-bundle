@@ -1,0 +1,187 @@
+{#
+  The claimant's delegates page: who may edit this profile on their behalf,
+  and a form to invite somebody else.
+
+  Expects: physician, claim, delegations (every row under this claim, newest
+  first), openCount, maxOpen, allowedDomains (list of strings), supportEmail.
+
+  Accessibility notes:
+
+    - The delegates are a real <table> with a <caption> and scoped headers,
+      because it IS tabular data — who, status, since when, what you can do —
+      and a screen reader can then announce "Status, Active delegate" as it
+      moves across a row, rather than reading a run of loose text.
+    - Every Remove button carries the person's address in visually-hidden text,
+      so tabbing down a column of buttons hears "Remove jane@…" rather than
+      "Remove, Remove, Remove".
+    - The invite field is type="email" with autocomplete="off": the browser can
+      offer the right keyboard on a phone and do a first-pass format check, but
+      should not offer the CLAIMANT's own address, which is what autocomplete
+      would suggest first. The server validates regardless — with scripting or
+      HTML5 validation off, nothing here depends on the browser.
+    - confirm() on Remove is an extra, not the safeguard. With JavaScript off the
+      form simply submits, which is correct — it is reversible by inviting again.
+#}
+{% extends '@HMFPSearchTool/search/layout.html.twig' %}
+
+{% set displayName = physician.preferredFullName is not empty
+  ? physician.preferredFullName
+  : physician.legalName %}
+
+{% block search_page_title %}Delegates for {{ displayName }}{% endblock %}
+
+{% block content %}
+
+  <header class="profile-header">
+    <p class="profile-eyebrow">Provider profile</p>
+    <h1>Delegates for {{ displayName }}</h1>
+  </header>
+
+  <div class="claim-layout">
+
+    <section class="profile-card" aria-labelledby="about-heading">
+      <h2 id="about-heading">What a delegate can do</h2>
+      <p>
+        A delegate — an assistant, practice manager or colleague — can propose
+        changes to this profile for you, exactly as you can. A data steward
+        reviews every change before it appears in the directory, whoever made it.
+      </p>
+      <p>
+        Delegates cannot invite anybody else, and they lose access straight away
+        if you remove them or if this profile stops being linked to your account.
+      </p>
+    </section>
+
+    <section class="profile-card" aria-labelledby="list-heading">
+      <h2 id="list-heading">People with access</h2>
+
+      {% if delegations is empty %}
+        <p>You have not invited anybody yet.</p>
+      {% else %}
+        <table class="table">
+          <caption class="visually-hidden">Delegates and invitations for {{ displayName }}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Email address</th>
+              <th scope="col">Status</th>
+              <th scope="col">Since</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for delegation in delegations %}
+              <tr>
+                <th scope="row">{{ delegation.delegateLabel }}</th>
+                <td>
+                  {{ delegation.status.label }}
+                  {#
+                    A pending invitation whose link has run out still says
+                    "Invitation sent" — status does not track expiry, see
+                    DelegationStatus. Saying so here is what tells the claimant
+                    to press Re-send rather than keep waiting.
+                  #}
+                  {% if delegation.status.isPending and delegation.tokenExpiresAt and delegation.tokenExpiresAt < date() %}
+                    <br><span class="muted">The link has expired — send it again.</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% set since = delegation.endedAt ?? delegation.acceptedAt ?? delegation.invitedAt %}
+                  <time datetime="{{ since|date('c') }}">{{ since|date('M j, Y') }}</time>
+                </td>
+                <td>
+                  {% if delegation.status.isOpen %}
+                    <ul class="action-list">
+                      {% if delegation.status.isPending %}
+                        {#
+                          Re-send is the invite form again with the address filled
+                          in: DelegationManager::invite() recognises the pending row
+                          and issues a fresh link. One code path, not two.
+                        #}
+                        <li>
+                          <form method="post" action="{{ path('hmfp_search_tool_delegate_invite', {'physician': physician.id}) }}">
+                            <input type="hidden" name="_token" value="{{ csrf_token('delegate-invite-' ~ physician.id) }}">
+                            <input type="hidden" name="email" value="{{ delegation.delegateLabel }}">
+                            <button type="submit" class="button button--secondary">
+                              Re-send<span class="visually-hidden"> invitation to {{ delegation.delegateLabel }}</span>
+                            </button>
+                          </form>
+                        </li>
+                      {% endif %}
+                      <li>
+                        <form method="post"
+                              action="{{ path('hmfp_search_tool_delegate_remove', {'physician': physician.id, 'delegation': delegation.id}) }}"
+                              onsubmit="return confirm('{{ delegation.status.isPending ? 'Withdraw this invitation?' : 'Remove this delegate? They will no longer be able to propose edits.' }}');">
+                          <input type="hidden" name="_token" value="{{ csrf_token('delegate-remove-' ~ delegation.id) }}">
+                          <button type="submit" class="button button--danger">
+                            {{ delegation.status.isPending ? 'Withdraw' : 'Remove' }}<span class="visually-hidden"> {{ delegation.delegateLabel }}</span>
+                          </button>
+                        </form>
+                      </li>
+                    </ul>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </section>
+
+    <section class="profile-card" aria-labelledby="invite-heading">
+      <h2 id="invite-heading">Invite somebody</h2>
+
+      {% if allowedDomains is empty %}
+        {#
+          Fail-closed, said plainly. Without this the form would be offered and
+          every submission refused, which reads as the invitee's fault.
+        #}
+        <p role="status">
+          Invitations are not available yet, because no email domains have been
+          approved. Email <a href="mailto:{{ supportEmail }}">{{ supportEmail }}</a>
+          and an administrator can set this up.
+        </p>
+      {% elseif openCount >= maxOpen %}
+        <p role="status">
+          This profile already has {{ maxOpen }} delegates and open invitations,
+          which is the most it can have at once. Remove one to invite somebody new.
+        </p>
+      {% else %}
+        <form method="post" action="{{ path('hmfp_search_tool_delegate_invite', {'physician': physician.id}) }}" class="claim-form">
+          <input type="hidden" name="_token" value="{{ csrf_token('delegate-invite-' ~ physician.id) }}">
+
+          <div class="form-row">
+            <label for="delegate-email">Their work email address</label>
+            <input
+              type="email"
+              id="delegate-email"
+              name="email"
+              autocomplete="off"
+              spellcheck="false"
+              size="40"
+              maxlength="255"
+              required
+              aria-describedby="delegate-email-hint"
+            >
+            <p class="hint" id="delegate-email-hint">
+              Addresses at
+              {% for domain in allowedDomains %}{{ domain }}{% if not loop.last %}{{ loop.revindex == 2 ? ' or ' : ', ' }}{% endif %}{% endfor %}.
+              Use their main address rather than an alias, so the invitation
+              matches the account they sign in with.
+              If they do not have an account yet, the email will help them set
+              one up.
+            </p>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="button">Send invitation</button>
+          </div>
+        </form>
+      {% endif %}
+    </section>
+
+    <p>
+      <a class="button button--secondary" href="{{ path('hmfp_search_tool_profile_view', {'id': physician.id}) }}">&laquo; Back to the profile</a>
+    </p>
+
+  </div>
+{% endblock %}

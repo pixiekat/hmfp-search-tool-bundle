@@ -33,4 +33,15 @@ interface PhysicianVoterInterface {
    */
   public const PERMISSION_CAN_CLAIM_PHYSICIAN = 'can_claim_physician';
 
+  /**
+   * Whether or not someone can invite and remove delegates for a physician —
+   * people who may propose edits on the physician's behalf.
+   *
+   * The claimant only. Delegates cannot invite further delegates: access that
+   * can spread without the physician seeing it is access the physician cannot
+   * vouch for. Stewards remove delegates from the admin claim screen, under
+   * ROLE_DATA_STEWARD, not through this permission.
+   */
+  public const PERMISSION_CAN_MANAGE_DELEGATES = 'can_manage_physician_delegates';
+
 }

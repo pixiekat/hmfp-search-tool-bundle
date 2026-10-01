@@ -10,6 +10,7 @@ use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigura
  * data, not services:
  *   - Entity/    — Doctrine entities (managed by the ORM, never the container)
  *   - Enum/      — pure value objects
+ *   - Exception/ — thrown, never injected
  *   - Message/   — Messenger message DTOs (the *handlers* in MessageHandler/ ARE
  *                  services and stay registered)
  *   - ReadModel/ — immutable snapshots built by hand inside services (Patient),
@@ -39,6 +40,7 @@ return static function (ContainerConfigurator $container): void {
         ->exclude([
             $bundleDir . '/src/Entity/',
             $bundleDir . '/src/Enum/',
+            $bundleDir . '/src/Exception/',
             $bundleDir . '/src/Message/',
             $bundleDir . '/src/ReadModel/',
             $bundleDir . '/src/HMFPSearchToolBundle.php',

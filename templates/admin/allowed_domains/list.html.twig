@@ -1,0 +1,101 @@
+{#
+  The allowlist of email domains that may be given local accounts.
+
+  Expects: domains (list of AllowedEmailDomain, alphabetical).
+
+  List and add form on one page: the list is short, and seeing what is already
+  there is the best defence against adding "bidmc.harvard.edu " twice or
+  "harvard.edu" when "bidmc.harvard.edu" was meant.
+#}
+{% extends '@HMFPSearchTool/admin/layout.html.twig' %}
+{% block admin_page_title %}Allowed Email Domains{% endblock %}
+
+{% block content %}
+  <h1>Allowed email domains</h1>
+
+  <p>
+    People with addresses at these domains can be invited as delegates for a
+    physician's profile, and — when it is switched on — can register a local
+    account. <strong>Only exact matches count:</strong> listing
+    <code>bidmc.harvard.edu</code> does not admit <code>harvard.edu</code> or
+    any other subdomain.
+  </p>
+  <p>
+    Removing a domain only stops <em>new</em> invitations. Anybody already
+    invited or already holding an account keeps it.
+  </p>
+  <p>
+    Microsoft (Entra) sign-in, when it arrives, does not use this list: whoever
+    the organisation's tenant allows to sign in can.
+  </p>
+
+  {% if domains is empty %}
+    {#
+      role="status" so it is announced — this is the state where the feature is
+      switched off, and an administrator arriving here should hear why.
+    #}
+    <p role="status">
+      <strong>The list is empty, so nobody can be invited yet.</strong>
+      Add your organisation's domain below.
+    </p>
+  {% else %}
+    <div class="table-wrap">
+      <table>
+        <caption>{{ domains|length }} allowed domain{{ domains|length == 1 ? '' : 's' }}.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Domain</th>
+            <th scope="col">Note</th>
+            <th scope="col">Added</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for domain in domains %}
+            <tr>
+              <th scope="row"><code>{{ domain.domain }}</code></th>
+              <td>{{ domain.note ?? '' }}</td>
+              <td>
+                <time datetime="{{ domain.addedAt|date('c') }}">{{ domain.addedAt|date('M j, Y') }}</time>
+                {% if domain.addedBy %}<br><span class="muted">by {{ domain.addedBy.emailAddress }}</span>{% endif %}
+              </td>
+              <td>
+                <form method="post" action="{{ path('hmfp_search_tool_admin_allowed_domain_remove', {'domain': domain.id}) }}" class="inline"
+                      onsubmit="return confirm('Remove {{ domain.domain }}? Nobody new at that domain will be able to be invited.');">
+                  <input type="hidden" name="_token" value="{{ csrf_token('allowed-domain-remove-' ~ domain.id) }}">
+                  <button type="submit" class="button--danger">
+                    Remove<span class="visually-hidden"> {{ domain.domain }}</span>
+                  </button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  <h2 id="add-heading">Add a domain</h2>
+  <form method="post" action="{{ path('hmfp_search_tool_admin_allowed_domain_add') }}" aria-labelledby="add-heading">
+    <input type="hidden" name="_token" value="{{ csrf_token('allowed-domain-add') }}">
+
+    <div class="form-row">
+      <label for="domain">Domain</label>
+      <input type="text" id="domain" name="domain" required maxlength="253"
+             autocomplete="off" spellcheck="false" inputmode="url"
+             aria-describedby="domain-hint">
+      <p class="hint" id="domain-hint">
+        Just the part after the @, for example <code>bidmc.harvard.edu</code>.
+        Pasting a whole address works too.
+      </p>
+    </div>
+
+    <div class="form-row">
+      <label for="note">Note <span class="muted">(optional)</span></label>
+      <input type="text" id="note" name="note" maxlength="255" aria-describedby="note-hint">
+      <p class="hint" id="note-hint">Why it is on the list — for the next administrator.</p>
+    </div>
+
+    <button type="submit" class="button">Add domain</button>
+  </form>
+{% endblock %}

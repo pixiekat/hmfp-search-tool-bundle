@@ -26,6 +26,7 @@ final class AdminController extends AbstractController {
     private readonly UserPasswordHasherInterface $passwordHasher,
     private readonly AuditLogManager $auditLogManager,
     private readonly Repository\PhysicianClaimRepository $claims,
+    private readonly Repository\PhysicianDelegationRepository $delegations,
   ) {  }
 
   // get all claims for an admin to review, with a link to the claim review page for each claim.
@@ -78,6 +79,10 @@ final class AdminController extends AbstractController {
     return $this->render('@HMFPSearchTool/admin/claims/claim_edit.html.twig', [
       'claim' => $claim,
       'form' => $form,
+
+      // Everybody this claim has lent its standing to, including finished rows,
+      // so a steward investigating a claim sees who else could edit through it.
+      'delegations' => $this->delegations->findForClaim($claim),
     ]);
   }
 

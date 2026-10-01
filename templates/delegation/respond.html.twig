@@ -1,0 +1,137 @@
+{#
+  The page an invitation link opens.
+
+  Expects: delegation, physician, token, mode, minPassword, supportEmail.
+
+  mode is one of:
+    expired  — the link has run out
+    activate — a new account: choose a password, then accept; or decline
+    respond  — an existing, signed-in account: accept or decline
+
+  Accept and Decline are two separate forms with two separate buttons, not one
+  form with a radio group. Each button then says exactly what it does, both are
+  reachable by Tab, and "Decline" works without filling in a password — somebody
+  saying no should not have to invent a password first.
+
+  Accessibility notes on the password fields:
+
+    - autocomplete="new-password" on both: password managers offer to generate
+      and save one, and browsers stop offering the claimant's saved password.
+    - The length rule is stated BEFORE the fields and tied to them with
+      aria-describedby, rather than discovered afterwards from an error.
+    - minlength is a convenience for browsers that support it. The server checks
+      the same rule, so nothing depends on it.
+    - No "show password" toggle: it needs JavaScript to be any use, and the
+      confirmation field already catches the typo it exists to catch.
+#}
+{% extends '@HMFPSearchTool/search/layout.html.twig' %}
+
+{% set displayName = physician.preferredFullName is not empty
+  ? physician.preferredFullName
+  : physician.legalName %}
+
+{% block search_page_title %}Invitation to help with {{ displayName }}'s profile{% endblock %}
+
+{% block content %}
+
+  <header class="profile-header">
+    <p class="profile-eyebrow">Provider profile</p>
+    <h1>Help keep {{ displayName }}'s profile up to date</h1>
+  </header>
+
+  <div class="claim-layout">
+
+    {% if mode == 'expired' %}
+      <section class="profile-card" aria-labelledby="expired-heading" role="alert">
+        <h2 id="expired-heading">This invitation has expired</h2>
+        <p>
+          Invitation links last seven days. Ask {{ delegation.inviterLabel }} to
+          send it again from their delegates page, and a fresh link will arrive.
+        </p>
+      </section>
+
+    {% else %}
+      <section class="profile-card" aria-labelledby="invite-heading">
+        <h2 id="invite-heading">You have been invited</h2>
+        <p>
+          <strong>{{ delegation.inviterLabel }}</strong> has asked you to help keep
+          the HMFP Search Tool profile for
+          <strong>{{ physician.legalName }}{% if physician.credentials is not empty %}, {{ physician.credentials }}{% endif %}</strong>
+          up to date.
+        </p>
+        <p>
+          If you accept, you will be able to propose changes to this profile. A
+          data steward reviews every change before it appears in the directory.
+          You can stop at any time by asking {{ delegation.inviterLabel }} to
+          remove you.
+        </p>
+      </section>
+
+      <section class="profile-card" aria-labelledby="accept-heading">
+        <h2 id="accept-heading">
+          {{ mode == 'activate' ? 'Set up your account and accept' : 'Accept' }}
+        </h2>
+
+        <form method="post" action="{{ path('hmfp_search_tool_delegation_accept', {'token': token}) }}" class="claim-form">
+          <input type="hidden" name="_token" value="{{ csrf_token('delegation-respond-' ~ delegation.id) }}">
+
+          {% if mode == 'activate' %}
+            <p>
+              An account has been set up for
+              <strong>{{ delegation.delegate.emailAddress }}</strong>. Choose a
+              password to finish it. You will use this address and password to
+              sign in.
+            </p>
+
+            <p class="hint" id="password-rule">
+              At least {{ minPassword }} characters. A few ordinary words strung
+              together is easier to remember than a jumble, and just as strong.
+            </p>
+
+            <div class="form-row">
+              <label for="password">Choose a password</label>
+              <input type="password" id="password" name="password"
+                     autocomplete="new-password" minlength="{{ minPassword }}" maxlength="4096"
+                     required aria-describedby="password-rule">
+            </div>
+
+            <div class="form-row">
+              <label for="password_confirm">Type it again</label>
+              <input type="password" id="password_confirm" name="password_confirm"
+                     autocomplete="new-password" minlength="{{ minPassword }}" maxlength="4096"
+                     required aria-describedby="password-rule">
+            </div>
+          {% endif %}
+
+          <div class="form-actions">
+            <button type="submit" class="button">
+              {{ mode == 'activate' ? 'Create my account and accept' : 'Accept invitation' }}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="profile-card" aria-labelledby="decline-heading">
+        <h2 id="decline-heading">Or decline</h2>
+        <p>
+          {{ delegation.inviterLabel }} will see that you declined.
+          {% if mode == 'activate' %}No account will be set up for you.{% endif %}
+        </p>
+        <form method="post" action="{{ path('hmfp_search_tool_delegation_decline', {'token': token}) }}">
+          <input type="hidden" name="_token" value="{{ csrf_token('delegation-respond-' ~ delegation.id) }}">
+          <button type="submit" class="button button--secondary">Decline invitation</button>
+        </form>
+      </section>
+
+      {#
+        The line that matters most, as in the claim email: an invitation somebody
+        did not expect is the earliest sign it went to the wrong person.
+      #}
+      <p class="hint">
+        Not expecting this? Do not accept. Email
+        <a href="mailto:{{ supportEmail }}">{{ supportEmail }}</a> and let us know.
+      </p>
+    {% endif %}
+
+  </div>
+{% endblock %}

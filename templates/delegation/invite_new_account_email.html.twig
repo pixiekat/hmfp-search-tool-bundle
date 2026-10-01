@@ -1,0 +1,53 @@
+{#
+  Invitation to somebody who has NO account here yet.
+
+  Flat HTML in the style of profile/claim_email.html.twig. The link in this one
+  is more sensitive than any other email this app sends: until it is used, it is
+  how this account's first password gets chosen. Hence the plain warning not to
+  forward it.
+
+  ── When Entra SSO arrives ──────────────────────────────────────────────────
+  The middle paragraph becomes "sign in with your Microsoft work account" and
+  the forwarding warning can soften — the link will no longer set a password.
+  See DelegationManager::activateAccount().
+#}
+<p>Hello,</p>
+
+<p>
+  <strong>{{ inviterLabel }}</strong> has invited you to help keep the HMFP Search
+  Tool profile for
+  <strong>{{ physician.legalName }}{% if physician.credentials is not empty %}, {{ physician.credentials }}{% endif %}</strong>
+  up to date.
+</p>
+
+<p>
+  If you accept, you will be able to propose changes to this profile. A data
+  steward reviews every change before it appears in the directory.
+</p>
+
+<p>
+  You do not have an HMFP Search Tool account yet, so the link below will ask you
+  to choose a password first. Your account will use this email address,
+  {{ delegation.delegate.emailAddress }}. You can also decline, and no account
+  will be set up.
+</p>
+
+<p><a href="{{ respondUrl }}">{{ respondUrl }}</a></p>
+
+{% if expiresAt %}
+  <p>
+    This link stops working on
+    {{ expiresAt|date('l j F Y') }} at {{ expiresAt|date('g:i A') }}.
+  </p>
+{% endif %}
+
+<p>
+  Please do not forward this email: the link sets up your account, and anyone
+  holding it could set it up instead of you.
+</p>
+
+<p>
+  <strong>If you were not expecting this, please do not use the link.</strong>
+  Email <a href="mailto:{{ supportEmail }}">{{ supportEmail }}</a> or call
+  (617) 278-8162 and let us know.
+</p>

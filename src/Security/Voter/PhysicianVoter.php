@@ -16,7 +16,8 @@ class PhysicianVoter extends PixieHelperSecurity\Voter\BaseVoter implements Inte
   use Traits\Security\Voter\AdminVoterTrait;
 
   /**
-   * Physician ids each user holds a live claim on, keyed by user id.
+   * Physician ids each user may speak for — by holding a live claim, or as an
+   * accepted delegate of one — keyed by user id.
    *
    * The search results template asks CAN_EDIT_PHYSICIAN once per row, so without
    * this the claim lookup runs once per result — twenty providers, twenty
@@ -53,6 +54,7 @@ class PhysicianVoter extends PixieHelperSecurity\Voter\BaseVoter implements Inte
 
     return match($attribute) {
         self::PERMISSION_CAN_CLAIM_PHYSICIAN => $this->canClaimPhysician($user, $physician),
+        self::PERMISSION_CAN_MANAGE_DELEGATES => $this->canManageDelegates($user, $physician),
         self::PERMISSION_CAN_EDIT_PHYSICIAN => $this->canProposePhysicianEdits($user, $physician),
         self::PERMISSION_CAN_VIEW_PHYSICIAN_EDITS => $this->security->isGranted('ROLE_USER'),
         self::PERMISSION_CAN_VIEW_ALL_PHYSICIAN_EDITS => $this->canViewAllPhysicianEdits($user),
@@ -101,11 +103,40 @@ class PhysicianVoter extends PixieHelperSecurity\Voter\BaseVoter implements Inte
   }
 
   /**
-   * Whether this user holds a live claim on this physician.
+   * Whether this user may invite and remove delegates for this physician.
+   *
+   * Holding the live claim, and nothing else: being a delegate is not enough
+   * (see PhysicianVoterInterface::PERMISSION_CAN_MANAGE_DELEGATES), which is why
+   * this asks the claim repository directly rather than the memoised set below
+   * — that set deliberately mixes claims and delegations together.
+   *
+   * One query rather than memoised, because only the profile page and the
+   * delegates page ask it, once each.
+   */
+  public function canManageDelegates(UserInterface $user, ?Entity\Physician $physician = null): bool {
+    if (!$user instanceof Entity\User || $physician === null) {
+      return false;
+    }
+
+    return $this->entityManager
+      ->getRepository(Entity\PhysicianClaim::class)
+      ->hasActiveClaimOn($user, $physician);
+  }
+
+  /**
+   * Whether this user may speak for this physician — as its claimant, OR as an
+   * accepted delegate of its live claim.
    *
    * Fills self::$claimedPhysicianIds on first use for the user, then answers from
    * it. array_fill_keys so the check below is an isset() on a hash rather than an
    * in_array() scan — it matters on a results page asking the question per row.
+   *
+   * Two queries on first use rather than one, claims and delegations. A UNION in
+   * one statement would save a round trip, but DQL has no UNION, and the two
+   * repository methods each read on their own; that is worth more than one
+   * millisecond per request. The array_merge happens BEFORE array_fill_keys, so a
+   * physician somebody both claims and is a delegate for (possible in principle
+   * if they claimed it after being invited) collapses to one key.
    */
   private function holdsClaimOn(Entity\User $user, Entity\Physician $physician): bool {
     $userId      = (int) $user->getId();
@@ -120,9 +151,14 @@ class PhysicianVoter extends PixieHelperSecurity\Voter\BaseVoter implements Inte
 
     if (!isset($this->claimedPhysicianIds[$userId])) {
       $this->claimedPhysicianIds[$userId] = array_fill_keys(
-        $this->entityManager
-          ->getRepository(Entity\PhysicianClaim::class)
-          ->claimedPhysicianIdsFor($user),
+        array_merge(
+          $this->entityManager
+            ->getRepository(Entity\PhysicianClaim::class)
+            ->claimedPhysicianIdsFor($user),
+          $this->entityManager
+            ->getRepository(Entity\PhysicianDelegation::class)
+            ->delegatedPhysicianIdsFor($user),
+        ),
         true,
       );
     }

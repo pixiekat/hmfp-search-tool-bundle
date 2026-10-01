@@ -55,13 +55,17 @@ final class PhysicianClaimController extends AbstractController {
    * Matching HmfpSearchToolAuthCodeMailer's hard-coded sender rather than
    * inventing a second convention. Both want to become a bound parameter —
    * see the note in that class.
+   *
+   * Public so DelegationManager's invitations come from the same place rather
+   * than from a third copy of the address. When this becomes a parameter, both
+   * follow.
    */
-  private const MAIL_FROM = 'kebloom@bidmc.harvard.edu';
+  public const MAIL_FROM = 'kebloom@bidmc.harvard.edu';
 
   /**
-   * Where to send someone who needs a human.
+   * Where to send someone who needs a human. Public for the same reason.
    */
-  private const SUPPORT_EMAIL = 'help@alicantobidmc.org';
+  public const SUPPORT_EMAIL = 'help@alicantobidmc.org';
 
   public function __construct(
     private readonly EntityManagerInterface $entityManager,
@@ -72,6 +76,8 @@ final class PhysicianClaimController extends AbstractController {
     private readonly UrlGeneratorInterface $urlGenerator,
     private readonly Repository\PhysicianEditRepository $edits,
     private readonly Services\PhysicianEditManager $editManager,
+    private readonly Repository\PhysicianDelegationRepository $delegations,
+    private readonly Services\DelegationManager $delegationManager,
   ) {  }
 
   /**
@@ -196,11 +202,18 @@ final class PhysicianClaimController extends AbstractController {
 
     $steward = $this->currentUser();
     $claim->revoke($steward, "Claim revoked by data steward.", new \DateTimeImmutable());
+
+    // The delegates lost access the moment the claim stopped granting — the
+    // voter's query joins through the claim. This only makes their rows say so.
+    // Same flush as the claim, so the two cannot disagree.
+    $delegatesEnded = $this->delegationManager->endAllForClaim($claim, $steward, 'Ended because the claim was revoked.');
+
     $this->entityManager->flush();
 
     $this->auditLogManager->log('claim.revoked', $claim, [
-      'physicianId' => $claim->getPhysician()->getId(),
-      'claimant'    => $claim->getClaimantLabel(),
+      'physicianId'    => $claim->getPhysician()->getId(),
+      'claimant'       => $claim->getClaimantLabel(),
+      'delegatesEnded' => $delegatesEnded,
     ]);
     $this->addFlash('success', 'Claim revoked successfully.');
 
@@ -263,31 +276,45 @@ final class PhysicianClaimController extends AbstractController {
       new \DateTimeImmutable(),
     );
 
+    $delegatesEnded = $this->delegationManager->endAllForClaim($claim, $steward, 'Ended because the claim was revoked and its edits reverted.');
+
+    // Whose edits go back: the claimant's, AND everybody who was ever an
+    // accepted delegate under this claim. A claim that should never have existed
+    // taints everything done through it — an assistant's edits made on the
+    // strength of a false claim are no more trustworthy than the claimant's own.
+    //
+    // Still not EVERY edit on the physician: stewards' work, and the rightful
+    // claimant's from before the record changed hands, are left alone.
+    $authors = [$claim->getUser(), ...$this->delegations->everAcceptedDelegatesOf($claim)];
+
     $reverted = 0;
 
-    foreach ($this->edits->findPublishedByAuthorFor($physician, $claim->getUser()) as $edit) {
-      $this->editManager->reject($edit, $steward);
+    foreach ($authors as $author) {
+      foreach ($this->edits->findPublishedByAuthorFor($physician, $author) as $edit) {
+        $this->editManager->reject($edit, $steward);
 
-      // Flushed inside the loop, which looks wasteful until you read reject(): for
-      // a taxonomy field it recomputes the projection from the edits the DATABASE
-      // still reports as published, filtering out only the one edit in hand. An
-      // unflushed rejection from an earlier pass is therefore still "published" as
-      // far as that query is concerned, and the last iteration would happily
-      // restore a value this loop had already revoked.
-      //
-      // One claimant's edits to one physician is a handful of rows, so correctness
-      // is the cheaper trade.
-      $this->entityManager->flush();
-      $reverted++;
+        // Flushed inside the loop, which looks wasteful until you read reject(): for
+        // a taxonomy field it recomputes the projection from the edits the DATABASE
+        // still reports as published, filtering out only the one edit in hand. An
+        // unflushed rejection from an earlier pass is therefore still "published" as
+        // far as that query is concerned, and the last iteration would happily
+        // restore a value this loop had already revoked.
+        //
+        // One claim's edits to one physician is a handful of rows, so correctness
+        // is the cheaper trade.
+        $this->entityManager->flush();
+        $reverted++;
+      }
     }
 
-    // Flushed again for the claim itself when the loop did nothing.
+    // Flushed again for the claim (and its delegations) when the loop did nothing.
     $this->entityManager->flush();
 
     $this->auditLogManager->log('claim.revoked_with_revert', $claim, [
-      'physicianId'  => $physician->getId(),
-      'claimant'     => $claim->getClaimantLabel(),
-      'editsReverted' => $reverted,
+      'physicianId'    => $physician->getId(),
+      'claimant'       => $claim->getClaimantLabel(),
+      'editsReverted'  => $reverted,
+      'delegatesEnded' => $delegatesEnded,
     ]);
 
     $this->addFlash('success', sprintf(

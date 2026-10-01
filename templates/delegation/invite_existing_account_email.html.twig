@@ -1,0 +1,40 @@
+{#
+  Invitation to somebody who ALREADY has an account here.
+
+  Flat HTML in the style of profile/claim_email.html.twig, for its reasons: no
+  layout, no CSS, no images, and the URL printed as well as linked.
+
+  The recipient will be asked to sign in before they can answer, so the email
+  says so — otherwise a login page after clicking an invitation looks like the
+  first step of a phishing attempt.
+#}
+<p>Hello,</p>
+
+<p>
+  <strong>{{ inviterLabel }}</strong> has invited you to help keep the HMFP Search
+  Tool profile for
+  <strong>{{ physician.legalName }}{% if physician.credentials is not empty %}, {{ physician.credentials }}{% endif %}</strong>
+  up to date.
+</p>
+
+<p>
+  If you accept, you will be able to propose changes to this profile. A data
+  steward reviews every change before it appears in the directory.
+</p>
+
+<p>To accept or decline, open this link and sign in with your usual account:</p>
+
+<p><a href="{{ respondUrl }}">{{ respondUrl }}</a></p>
+
+{% if expiresAt %}
+  <p>
+    This link stops working on
+    {{ expiresAt|date('l j F Y') }} at {{ expiresAt|date('g:i A') }}.
+  </p>
+{% endif %}
+
+<p>
+  <strong>If you were not expecting this, please do not accept.</strong>
+  Email <a href="mailto:{{ supportEmail }}">{{ supportEmail }}</a> or call
+  (617) 278-8162 and let us know.
+</p>

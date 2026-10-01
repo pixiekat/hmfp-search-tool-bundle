@@ -12,10 +12,30 @@ use Symfony\Component\Security\Core\User\UserInterface;
 
 /**
  * Application user.
+ *
+ * ── Why password is overridden to nullable ────────────────────────────────
+ * EntityPasswordTrait (symfony-common-helpers) maps `password` NOT NULL, which
+ * assumed every account signs in with one. Two kinds no longer do:
+ *
+ *   - an invited delegate whose account exists but who has not yet chosen a
+ *     password (see PhysicianDelegation::canActivateAccount());
+ *   - Entra SSO users, when that arrives, who never have a local password.
+ *
+ * A NULL password cannot be used to sign in: Symfony's CheckCredentialsListener
+ * refuses a user whose stored hash is null before comparing anything. So NULL
+ * reads as "no local login", which is exactly the meaning wanted — safer than a
+ * sentinel string that some future hasher might one day treat as a hash.
+ *
+ * Overridden here rather than changed in the trait so the helpers bundle's other
+ * consumers are not surprised. The matching migration is
+ * Version20260930120000_MakeUserPasswordNullable.
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'users')]
 #[ORM\HasLifecycleCallbacks]
+#[ORM\AttributeOverrides([
+  new ORM\AttributeOverride(name: 'password', column: new ORM\Column(name: 'password', type: 'string', length: 255, nullable: true)),
+])]
 #[ORM\RepositoryClass('Pixiekat\HMFPSearchToolBundle\Repository\UserRepository')]
 class User implements HelpersUserInterface, UserInterface, TwoFactorInterface, PasswordAuthenticatedUserInterface {
   use PixieTraits\EntityIdTrait;

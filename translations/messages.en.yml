@@ -43,6 +43,20 @@ audit:
         claim.revoked_with_revert: '%actor% revoked the claim for %target% and reverted the edits made under it'
         claim.mail_failed: '%actor% could not be sent a claim confirmation email for %target%'
 
+        # Delegations.
+        delegation.invited: '%actor% invited %target% to be a delegate for the physician profile'
+        delegation.accepted: '%actor% accepted the invitation to be a delegate for the physician profile'
+        delegation.emailed: '%actor% was sent an email to accept the invitation to be a delegate for the physician profile %target%'
+        delegation.declined: '%actor% declined the invitation to be a delegate for the physician profile %target%'
+        delegation.revoked: '%actor% revoked the delegation for the physician profile %target%'
+        delegation.reinvited: '%actor% re-sent the delegate invitation to %target%'
+        delegation.mail_failed: '%actor% could not be sent a delegation confirmation email for %target%'
+        delegation.account_activated: '%actor% activated the account for the delegate %target%'
+        delegation.account_created: '%actor% created the account for the delegate %target%'
+
+        allowed_domain.added: '%actor% added the allowed domain %target%'
+        allowed_domain.removed: '%actor% removed the allowed domain %target%'
+
         # Retired spellings, kept so the rows already written with them still read
         # as sentences rather than as raw keys. Nothing emits these any more.
         # Delete them once no audit_logs row references them.

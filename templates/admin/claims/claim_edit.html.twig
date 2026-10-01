@@ -14,4 +14,6 @@
   <p>Form: {{ form_widget(form) }}</p>
 
   {# Add form or actions to edit the claim here #}
+
+  {% include '@HMFPSearchTool/admin/claims/_delegations.html.twig' with {delegations: delegations, claim: claim} only %}
 {% endblock %}

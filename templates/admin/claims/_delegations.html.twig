@@ -1,0 +1,80 @@
+{#
+  A claim's delegates, for the steward's claim screen.
+
+  Expects: delegations (list of PhysicianDelegation), claim.
+
+  Shows finished rows too: a steward investigating a claim wants to know
+  everybody who could EVER edit through it, not only who can now.
+
+  The Remove button asks for a reason. Optional, but a removed delegate with no
+  note sends the next steward back to the same evidence.
+#}
+<section aria-labelledby="delegates-heading">
+  <h2 id="delegates-heading">Delegates</h2>
+
+  {% if not claim.grantsEditing and delegations is not empty %}
+    <p><strong>This claim is not live, so none of these people can edit through it.</strong></p>
+  {% endif %}
+
+  {% if delegations is empty %}
+    <p>The claimant has not invited anybody.</p>
+  {% else %}
+    <div class="table-wrap">
+      <table>
+        <caption>{{ delegations|length }} delegation{{ delegations|length == 1 ? '' : 's' }} under this claim.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Delegate</th>
+            <th scope="col">Status</th>
+            <th scope="col">Invited</th>
+            <th scope="col">Accepted</th>
+            <th scope="col">Ended</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for delegation in delegations %}
+            <tr>
+              <th scope="row">
+                {{ delegation.delegateLabel }}
+                {% if delegation.activatesAccount %}<br><span class="muted">account created by invitation</span>{% endif %}
+              </th>
+              <td>{{ delegation.status.label }}</td>
+              <td>
+                <time datetime="{{ delegation.invitedAt|date('c') }}">{{ delegation.invitedAt|date('M j, Y') }}</time>
+                <br><span class="muted">by {{ delegation.inviterLabel }}</span>
+              </td>
+              <td>
+                {% if delegation.acceptedAt %}
+                  <time datetime="{{ delegation.acceptedAt|date('c') }}">{{ delegation.acceptedAt|date('M j, Y') }}</time>
+                {% endif %}
+              </td>
+              <td>
+                {% if delegation.endedAt %}
+                  <time datetime="{{ delegation.endedAt|date('c') }}">{{ delegation.endedAt|date('M j, Y') }}</time>
+                  {% if delegation.note %}<br><span class="muted">{{ delegation.note }}</span>{% endif %}
+                {% endif %}
+              </td>
+              <td>
+                {% if delegation.status.isOpen %}
+                  <details class="vb-actions">
+                    <summary>Actions<span class="visually-hidden"> for {{ delegation.delegateLabel }}</span></summary>
+                    <form method="post" action="{{ path('hmfp_search_tool_admin_delegation_revoke', {'delegation': delegation.id}) }}"
+                          onsubmit="return confirm('Remove {{ delegation.delegateLabel }} as a delegate? Their published edits stay live.');">
+                      <input type="hidden" name="_token" value="{{ csrf_token('revoke_delegation_' ~ delegation.id) }}">
+                      <label for="delegation-note-{{ delegation.id }}">Reason <span class="muted">(optional)</span></label>
+                      <input type="text" id="delegation-note-{{ delegation.id }}" name="note" maxlength="500">
+                      <button class="button button--danger" type="submit">
+                        Remove delegate<span class="visually-hidden"> {{ delegation.delegateLabel }}</span>
+                      </button>
+                    </form>
+                  </details>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>
