@@ -10,4 +10,9 @@ interface SearchVoterInterface {
    */
   public const PERMISSION_CAN_ACCESS_SEARCH = 'can_access_search';
 
+  /**
+   * Checks if the user can logout.
+   */
+  public const PERMISSION_CAN_LOGOUT = 'can_logout';
+
 }

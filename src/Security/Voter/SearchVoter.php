@@ -33,6 +33,8 @@ class SearchVoter extends PixieHelperSecurity\Voter\BaseVoter implements Interfa
 
     return match($attribute) {
         self::PERMISSION_CAN_ACCESS_SEARCH => $this->security->isGranted('ROLE_USER'),
+        // a user can log out if they are logged in and active. If they are not active, they should not be able to log out because they should not be logged in at all.
+        self::PERMISSION_CAN_LOGOUT => $this->isGranted('IS_AUTHENTICATED_FULLY') && $this->canLogIn($user),
         default => false,
     };
 

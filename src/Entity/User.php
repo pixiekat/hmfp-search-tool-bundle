@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace Pixiekat\HMFPSearchToolBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use Nbgrp\OneloginSamlBundle\Security\User\SamlUserInterface;
 use Pixiekat\HMFPSearchToolBundle\Interfaces as HMFPSearchToolInterfaces;
 use Pixiekat\SymfonyHelpers\Traits\Entity as PixieTraits;
 use Pixiekat\SymfonyHelpers\Interfaces\Entity\HelpersUserInterface;
@@ -37,7 +38,7 @@ use Symfony\Component\Security\Core\User\UserInterface;
   new ORM\AttributeOverride(name: 'password', column: new ORM\Column(name: 'password', type: 'string', length: 255, nullable: true)),
 ])]
 #[ORM\RepositoryClass('Pixiekat\HMFPSearchToolBundle\Repository\UserRepository')]
-class User implements HelpersUserInterface, UserInterface, TwoFactorInterface, PasswordAuthenticatedUserInterface {
+class User implements HelpersUserInterface, UserInterface, SamlUserInterface, TwoFactorInterface, PasswordAuthenticatedUserInterface {
   use PixieTraits\EntityIdTrait;
 
   #[ORM\Column(type: 'string', length: 20, nullable: true)]
@@ -49,6 +50,10 @@ class User implements HelpersUserInterface, UserInterface, TwoFactorInterface, P
   use PixieTraits\EntityPasswordTrait;
   use PixieTraits\EntityRolesTrait;
   use PixieTraits\EntityActiveTrait;
+
+  #[ORM\Column(type: 'boolean', options: ['default' => false])]
+  private bool $isSamlUser = false;
+
   use PixieTraits\EntityCreatedAtTrait;
 
   public function __construct() {
@@ -91,6 +96,39 @@ class User implements HelpersUserInterface, UserInterface, TwoFactorInterface, P
   }
 
   /**
+   * @see UserInterface
+   */
+  public function getRoles(): array {
+    $roles = $this->roles;
+
+    // UID = 1 always has ROLE_SUPER_ADMIN
+    if (method_exists($this, 'getId') && $this->getId() === 1) {
+      $roles[] = 'ROLE_SUPER_ADMIN';
+    }
+
+    // if user has "TEST" in their last name, give them ROLE_TESTER
+    if (method_exists($this, 'getLastName') && str_contains($this->getLastName(), 'TEST')) {
+      $roles[] = 'ROLE_TESTER';
+    }
+
+    // users in self::SYSADMIN_EMAIL_ADDRESSES always have ROLE_SYSADMIN
+    if (in_array($this->getEmailAddress(), HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::SYSADMIN_EMAIL_ADDRESSES)) {
+      $roles[] = HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::ROLE_SYSADMIN;
+    }
+
+    // users in self::SUPER_ADMIN_EMAIL_ADDRESSES always have ROLE_SUPER_ADMIN
+    if (in_array($this->getEmailAddress(), HMFPSearchToolInterfaces\Entity\HMFPSearchToolUserInterface::SUPER_ADMIN_EMAIL_ADDRESSES)) {
+      $roles[] = 'ROLE_SUPER_ADMIN';
+    }
+
+    // guarantee every user at least has ROLE_USER
+    if (empty($roles)) {
+      $roles[] = 'ROLE_USER';
+    }
+    return array_unique($roles);
+  }
+
+  /**
    * {@inheritdoc}
    */
   public static function getAllRoles(bool $includeUser = true, bool $invert = false): array {
@@ -126,7 +164,11 @@ class User implements HelpersUserInterface, UserInterface, TwoFactorInterface, P
   }
 
   public function isEmailAuthEnabled(): bool {
-    return true;
+    // saml users are always authenticated through SSO, so email auth is not needed for them
+    if (!$this->isSamlUser()) {
+      return true;
+    }
+    return false;
   }
 
   public function getEmailAuthRecipient(): string {
@@ -143,5 +185,26 @@ class User implements HelpersUserInterface, UserInterface, TwoFactorInterface, P
 
   public function setEmailAuthCode(string $authCode): void {
     $this->authCode = $authCode;
+  }
+
+  public function isSamlUser(): bool {
+    return $this->isSamlUser;
+  }
+
+  public function setIsSamlUser(bool $isSamlUser): void {
+    $this->isSamlUser = $isSamlUser;
+  }
+
+  /**
+   * {@inheritdoc}
+   *
+   * @param array $attributes
+   * @return void
+   */
+  public function setSamlAttributes(array $attributes): void {
+    $this->emailAddress = $attributes['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress'][0];
+    $this->firstName = $attributes['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname'][0];
+    $this->lastName = $attributes['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname'][0];
+    // $this->setRoles($this->getAssignedRoles());
   }
 }

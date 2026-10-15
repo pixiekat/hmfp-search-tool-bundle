@@ -75,6 +75,21 @@ interface HMFPSearchToolUserInterface {
   public const ROLE_USER_LABEL = 'User';
 
   /**
+   * A list of email addresses that are always given sysadmin role.
+   */
+  public const SYSADMIN_EMAIL_ADDRESSES = [
+    'kebloom@bidmc.harvard.edu',
+    'yquintan@bidmc.harvard.edu',
+  ];
+
+  /**
+   * A list of email addresses that always get ROLE_SUPER_ADMIN.
+   */
+  public const SUPER_ADMIN_EMAIL_ADDRESSES = [
+    'kebloom@bidmc.harvard.edu',
+  ];
+
+  /**
    * Returns an array of all the roles.
    *
    * @param bool $includeUser Whether to include the ROLE_USER role in the returned array.

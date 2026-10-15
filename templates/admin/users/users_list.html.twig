@@ -13,6 +13,7 @@
         <tr>
           <th scope="col">Email</th>
           <th scope="col">Active</th>
+          <th scope="col">SAML User</th>
           <th scope="col">Roles</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
@@ -24,6 +25,14 @@
             <td>
               {# The word carries it, not the colour. #}
               {% if user.active %}
+                <span class="badge badge--agree">Yes</span>
+              {% else %}
+                <span class="badge badge--disagree">No</span>
+              {% endif %}
+            </td>
+            <td>
+              {# The word carries it, not the colour. #}
+              {% if user.isSamlUser %}
                 <span class="badge badge--agree">Yes</span>
               {% else %}
                 <span class="badge badge--disagree">No</span>

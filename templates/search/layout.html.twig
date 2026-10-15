@@ -56,11 +56,15 @@
       in the landmarks list and tell it apart from the pagination nav.
     #}
     {% if app.user %}
+      {% set canLogout = is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\SearchVoterInterface::PERMISSION_CAN_LOGOUT')) %}
       {% set canAdminister = is_granted(constant('Pixiekat\\SymfonyHelpers\\Interfaces\\Security\\Voter\\AdminVoterInterface::ADMIN_ADMINISTER')) %}
       {% set canReports    = is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\AdminVoterInterface::PERMISSION_CAN_ACCESS_REPORTS')) %}
 
-      {% if canAdminister or canReports %}
+      {% if canAdminister or canReports or canLogout %}
         <nav class="site-admin-nav" aria-label="Administration">
+          {% if canLogout %}
+            <a class="button button--secondary" href="{{ path('saml_logout') }}">Log out</a>
+          {% endif %}
           {% if canAdminister %}
             <a class="button button--secondary" href="{{ path('pixiekat_symfony_helpers_admin_index_alias') }}">Admin control panel</a>
           {% else %}
