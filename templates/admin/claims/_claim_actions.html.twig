@@ -19,7 +19,15 @@
 
   With CSS off — or in a browser without <details> — everything renders expanded,
   which is a list of links and submit buttons. That is what it is.
+
+  Only rendered for ROLE_DATA_STEWARD (Admin inherits it through the role
+  hierarchy). That is the exact check every claim action route makes, and it's
+  written the same way here so the two cannot drift. Department Editors and
+  Content Administrators can READ the claims screens, but every button here
+  would answer them with a 403, so they get no Actions control at all. The
+  calling template's cell is simply left empty.
 #}
+{% if is_granted('ROLE_DATA_STEWARD') %}
 <details class="vb-actions">
   {#
     Named for the claim, so a screen-reader user tabbing down a long table hears
@@ -98,3 +106,4 @@
   {% endif %}
 </ul>
 </details>
+{% endif %}

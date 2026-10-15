@@ -4,6 +4,7 @@ namespace Pixiekat\HMFPSearchToolBundle\Controller;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Pixiekat\HMFPSearchToolBundle\Entity;
+use Pixiekat\HMFPSearchToolBundle\Interfaces;
 use Pixiekat\HMFPSearchToolBundle\Repository;
 use Pixiekat\HMFPSearchToolBundle\Services\PhysicianEditManager;
 use Pixiekat\HMFPSearchToolBundle\Services\PhysicianTaxonomyManager;
@@ -40,7 +41,23 @@ final class PhysicianEditController extends AbstractController {
     private readonly PhysicianTaxonomyManager $taxonomy,
   ) {  }
 
+  // ── Reviewing ─────────────────────────────────────────────────────────────
+  //
+  // The queue and its two actions also need PERMISSION_CAN_APPROVE_EDITS (Admin
+  // or Data Steward), stacked on ADMIN_ADMINISTER. Confirming or reverting a
+  // live edit is a data-steward decision; Department Editors and Content
+  // Administrators could previously make it just by being "an admin".
+  //
+  // The queue itself is gated too, not only the buttons: it is a work list for
+  // the people who can act on it, and the admin menu already hides it from
+  // everybody else. A page the menu hides but the route still serves is the
+  // exact gap AdminRoleBoundaryTest exists to catch.
+  //
+  // The two HISTORY routes below deliberately stay on ADMIN_ADMINISTER alone.
+  // They are read-only, and the admin physicians list links every role there.
+
   #[IsGranted(PixieInterfaces\Security\Voter\AdminVoterInterface::ADMIN_ADMINISTER)]
+  #[IsGranted(Interfaces\Security\Voter\AdminVoterInterface::PERMISSION_CAN_APPROVE_EDITS)]
   #[Route('/admin/physician-edits', name: 'hmfp_search_tool_admin_physician_edits', methods: ['GET'])]
   public function queue(): Response {
     $pending = $this->edits->findUnreviewed(self::QUEUE_SIZE);
@@ -61,6 +78,7 @@ final class PhysicianEditController extends AbstractController {
   }
 
   #[IsGranted(PixieInterfaces\Security\Voter\AdminVoterInterface::ADMIN_ADMINISTER)]
+  #[IsGranted(Interfaces\Security\Voter\AdminVoterInterface::PERMISSION_CAN_APPROVE_EDITS)]
   #[Route('/admin/physician-edits/{id}/approve', name: 'hmfp_search_tool_admin_physician_edit_approve', requirements: ['id' => '\d+'], methods: ['POST'])]
   public function approve(int $id, Request $request): Response {
     $edit = $this->edits->find($id);
@@ -107,6 +125,7 @@ final class PhysicianEditController extends AbstractController {
   }
 
   #[IsGranted(PixieInterfaces\Security\Voter\AdminVoterInterface::ADMIN_ADMINISTER)]
+  #[IsGranted(Interfaces\Security\Voter\AdminVoterInterface::PERMISSION_CAN_APPROVE_EDITS)]
   #[Route('/admin/physician-edits/{id}/reject', name: 'hmfp_search_tool_admin_physician_edit_reject', requirements: ['id' => '\d+'], methods: ['POST'])]
   public function reject(int $id, Request $request): Response {
     $edit = $this->edits->find($id);

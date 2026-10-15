@@ -7,7 +7,14 @@
 
   <p>Claim ID: {{ claim.id }}</p>
   <p>Physician: <a href="{{ path('hmfp_search_tool_profile_view', {'id': claim.physician.id}) }}" target="_blank">{{ claim.physician.legalName }}</a></p>
-  <p>Claimant: <a href="{{ path('hmfp_search_tool_admin_user_edit', {'id': claim.getUser().getId()}) }}">{{ claim.getUser().getEmailAddress() }}</a></p>
+  {# Linked only for roles that can open the user editor — see claims_list.html.twig. #}
+  <p>Claimant:
+    {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\AdminVoterInterface::PERMISSION_CAN_MANAGE_USERS')) %}
+      <a href="{{ path('hmfp_search_tool_admin_user_edit', {'id': claim.getUser().getId()}) }}">{{ claim.getUser().getEmailAddress() }}</a>
+    {% else %}
+      {{ claim.getUser().getEmailAddress() }}
+    {% endif %}
+  </p>
   <p>Status: {{ claim.status.label }}</p>
   <p>Claimed At: {{ claim.getClaimedAt|date('Y-m-d H:i:s') }}</p>
 

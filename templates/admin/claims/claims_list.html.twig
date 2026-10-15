@@ -24,7 +24,18 @@
             <tr scope="row">
               <td scope="col">{{ claim.id }}</td>
               <td scope="col"><a href="{{ path('hmfp_search_tool_profile_view', {'id': claim.physician.id}) }}" target="_blank">{{ claim.physician.legalName }}</a></td>
-              <td scope="col"><a href="{{ path('hmfp_search_tool_admin_user_edit', {'id': claim.getUser().getId()}) }}">{{ claim.getUser().getEmailAddress() }}</a></td>
+              {#
+                Linked only for people who may open the user editor (Admin, Data
+                Steward). Everybody else who can see this list gets the address as
+                plain text: a link that answers 403 is a dead end, not a feature.
+              #}
+              <td scope="col">
+                {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\AdminVoterInterface::PERMISSION_CAN_MANAGE_USERS')) %}
+                  <a href="{{ path('hmfp_search_tool_admin_user_edit', {'id': claim.getUser().getId()}) }}">{{ claim.getUser().getEmailAddress() }}</a>
+                {% else %}
+                  {{ claim.getUser().getEmailAddress() }}
+                {% endif %}
+              </td>
               {#
                 Status, then the note underneath it.
 

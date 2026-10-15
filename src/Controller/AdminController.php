@@ -5,6 +5,7 @@ namespace Pixiekat\HMFPSearchToolBundle\Controller;
 use Doctrine\ORM\EntityManagerInterface;
 use Pixiekat\HMFPSearchToolBundle\Entity;
 use Pixiekat\HMFPSearchToolBundle\Form;
+use Pixiekat\HMFPSearchToolBundle\Interfaces;
 use Pixiekat\HMFPSearchToolBundle\Repository;
 use Pixiekat\SymfonyHelpers\Interfaces as PixieInterfaces;
 use Pixiekat\SymfonyHelpers\Services\AuditLogManager;
@@ -86,6 +87,20 @@ final class AdminController extends AbstractController {
     ]);
   }
 
+  // ── Users ─────────────────────────────────────────────────────────────────
+  //
+  // Every user route carries PERMISSION_CAN_MANAGE_USERS (Admin or Data Steward)
+  // ON TOP OF the class-level ADMIN_ADMINISTER. Symfony applies both attributes,
+  // so the class one still keeps out non-admins and this one narrows it further.
+  //
+  // Without it, any admin role (Department Editor and Content Administrator
+  // included) could read every account's name, email address and roles, and
+  // could create, edit or delete accounts. The admin menu already hid the
+  // "Users & Access" section from them, but a hidden menu entry is not access
+  // control: the routes still answered 200 to anyone who typed the URL.
+  // Same gate as AllowedDomainsAdminController, so the whole section agrees.
+
+  #[IsGranted(Interfaces\Security\Voter\AdminVoterInterface::PERMISSION_CAN_MANAGE_USERS)]
   #[Route('/users', name: 'hmfp_search_tool_admin_users_list')]
   public function listUsers(): Response {
     $users = $this->entityManager->getRepository(Entity\User::class)->findAll();
@@ -94,6 +109,7 @@ final class AdminController extends AbstractController {
     ]);
   }
 
+  #[IsGranted(Interfaces\Security\Voter\AdminVoterInterface::PERMISSION_CAN_MANAGE_USERS)]
   #[Route('/user/add', name: 'hmfp_search_tool_admin_user_add')]
   public function addUser(): Response {
 
@@ -135,6 +151,7 @@ final class AdminController extends AbstractController {
     ]);
   }
 
+  #[IsGranted(Interfaces\Security\Voter\AdminVoterInterface::PERMISSION_CAN_MANAGE_USERS)]
   #[Route('/user/{id}/edit', name: 'hmfp_search_tool_admin_user_edit', requirements: ['id' => '\d+'])]
   public function editUser(int $id): Response {
     $user = $this->entityManager->getRepository(Entity\User::class)->find($id);
@@ -183,6 +200,7 @@ final class AdminController extends AbstractController {
     ]);
   }
 
+  #[IsGranted(Interfaces\Security\Voter\AdminVoterInterface::PERMISSION_CAN_MANAGE_USERS)]
   #[Route('/user/{id}/delete', name: 'hmfp_search_tool_admin_user_delete', requirements: ['id' => '\d+'], methods: ['POST'])]
   public function deleteUser(int $id, Request $request): Response {
     $user = $this->entityManager->getRepository(Entity\User::class)->find($id);

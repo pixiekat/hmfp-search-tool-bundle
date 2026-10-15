@@ -56,7 +56,12 @@
                 {% endif %}
               </td>
               <td>
-                {% if delegation.status.isOpen %}
+                {#
+                  ROLE_DATA_STEWARD, matching the revoke route's own check. Other
+                  admin roles still see who the delegates are, just not a button
+                  that would refuse them.
+                #}
+                {% if delegation.status.isOpen and is_granted('ROLE_DATA_STEWARD') %}
                   <details class="vb-actions">
                     <summary>Actions<span class="visually-hidden"> for {{ delegation.delegateLabel }}</span></summary>
                     <form method="post" action="{{ path('hmfp_search_tool_admin_delegation_revoke', {'delegation': delegation.id}) }}"
