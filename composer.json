@@ -23,6 +23,7 @@
         "doctrine/doctrine-bundle": "^3.2",
         "doctrine/doctrine-migrations-bundle": "^4.0",
         "doctrine/orm": "^3.6",
+        "nbgrp/onelogin-saml-bundle": "^3.0",
         "nowo-tech/doctrine-encrypt-bundle": "^2.3",
         "pixiekat/symfony-common-helpers": "^2.0",
         "symfony/console": "^8.1",
