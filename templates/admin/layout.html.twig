@@ -77,5 +77,6 @@
   {% if app.user %}
     <span>Logged in as <strong>{{ app.user.displayName }}</strong></span>
   {% endif %}
+  <a href="{{ path('hmfp_search_tool_home') }}">Back to HMFP Search Tool</a>
   <a href="{{ path('pixiekat_symfony_helpers_logout') }}">Log out</a>
 {% endblock %}
