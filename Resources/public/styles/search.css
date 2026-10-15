@@ -81,7 +81,18 @@ a:hover { color: var(--hmfp-link-hover); }
   margin: 0 auto;
   padding: 1rem;
 }
-.site-header { border-bottom: 1px solid var(--hmfp-border); }
+/* Header: brand on the left, the admin button (when there is one) in the top-right corner. flex-wrap so that at high zoom or on a narrow phone the button drops onto its own line under the brand instead of squeezing it or forcing sideways scrolling. */
+.site-header {
+  border-bottom: 1px solid var(--hmfp-border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+/* margin-left: auto keeps the button pinned right even after it wraps to its own line. */
+.site-admin-nav { margin-left: auto; }
 .site-footer {
   border-top: 1px solid var(--hmfp-border);
   color: var(--hmfp-muted);

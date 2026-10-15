@@ -37,6 +37,38 @@
 
   <header class="site-header">
     <p class="site-brand"><a href="{{ path('hmfp_search_tool_search') }}">HMFP provider search</a></p>
+
+    {#
+      A way into the admin control panel, for the people who can use it.
+
+      Asks the voters rather than listing roles here. The voters are the one
+      place that decides who gets in, so the button can never disagree with the
+      route it points at, and adding a role later needs no template change.
+
+        ADMIN_ADMINISTER       → the control panel (any admin role)
+        CAN_ACCESS_REPORTS     → straight to the reports, for Analytics Viewers.
+                                 They are refused at /admincp itself (see
+                                 AdminVoterTrait::getAdminRoles()), so a "Control
+                                 panel" button would only take them to a 403.
+
+      Everybody else sees nothing: no greyed-out button, no hint that an admin
+      area exists. A <nav> with its own label so screen-reader users can find it
+      in the landmarks list and tell it apart from the pagination nav.
+    #}
+    {% if app.user %}
+      {% set canAdminister = is_granted(constant('Pixiekat\\SymfonyHelpers\\Interfaces\\Security\\Voter\\AdminVoterInterface::ADMIN_ADMINISTER')) %}
+      {% set canReports    = is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\AdminVoterInterface::PERMISSION_CAN_ACCESS_REPORTS')) %}
+
+      {% if canAdminister or canReports %}
+        <nav class="site-admin-nav" aria-label="Administration">
+          {% if canAdminister %}
+            <a class="button button--secondary" href="{{ path('pixiekat_symfony_helpers_admin_index_alias') }}">Admin control panel</a>
+          {% else %}
+            <a class="button button--secondary" href="{{ path('hmfp_search_tool_statistics') }}">Search reports</a>
+          {% endif %}
+        </nav>
+      {% endif %}
+    {% endif %}
   </header>
 
   <main id="main">
