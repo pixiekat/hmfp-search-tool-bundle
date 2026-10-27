@@ -71,3 +71,6 @@ two_factor:
     description: 'Two-factor authentication (2FA) adds an extra layer of security to your account by requiring a second form of verification in addition to your password. This helps protect your account from unauthorized access, even if your password is compromised.'
     code_placeholder: 'Enter the 6-digit code from your authenticator app'
     code_help: 'Check your email for the 6-digit code and enter it here. If you do not receive the code, click candel to cancel and try again.'
+
+buttons.login_saml: 'Login with BILH/BIDMC credentials'
+login_saml_help: 'Use your institutional credentials to log in. If you do not have an account, please contact your system administrator.'
