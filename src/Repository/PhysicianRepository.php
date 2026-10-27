@@ -10,6 +10,7 @@ use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 use Pixiekat\HMFPSearchToolBundle\Entity;
 use Pixiekat\HMFPSearchToolBundle\Enum\PhysicianVocabulary;
+use Pixiekat\HMFPSearchToolBundle\Search\SearchQuery;
 use Pixiekat\SymfonyHelpers\Traits\Repository\PaginationTrait;
 use Symfony\Bundle\SecurityBundle\Security;
 
@@ -72,13 +73,28 @@ class PhysicianRepository extends ServiceEntityRepository {
   public const SCORE_PARTIAL_SPECIALTY = 400; // "cardio" inside a specialty name
   public const SCORE_PARTIAL_INTEREST  = 350; // "heart" inside an interest
 
+  // every word of a multi-word query appears, but not together: "hand
+  // surgery" matching someone whose interest is "Surgery of the Hand".
+  public const SCORE_ALL_WORDS   = 300;
+
   /**
    * Phonetic — last, and far below everything literal.
    */
   public const SCORE_PHONETIC      = 200;
 
-  // no search term; filters only. Ordering falls back to name.
+  // no search term; filters only. Ordering falls back to name. Also what a
+  // result scores when it was admitted ONLY by a narrowing clause (an exact
+  // phrase, say) that none of the tiers above recognise.
   public const SCORE_BROWSE        = 0;
+
+  /**
+   * The SQL operators textMatchClause() may build with.
+   *
+   * A whitelist because the operator is interpolated into SQL, not bound.
+   * Nothing outside this class chooses it, but a closed list makes that a
+   * guarantee rather than a habit.
+   */
+  private const TEXT_MATCH_OPERATORS = ['LIKE', 'REGEXP'];
 
   /**
    * Filters backed by a DEDICATED table — one join table per entity.
@@ -142,8 +158,15 @@ class PhysicianRepository extends ServiceEntityRepository {
    * (e.g., Lu, Li, Ma, Ho, Wu) unfindable. A plain LIKE scan is used instead,
    * which does not have this limitation.
    *
-   * @param string $term Free-text query over name, specialty and interests;
-   *   '' browses by filter alone.
+   * NOTE on portability: the exact-phrase and exclusion clauses use REGEXP
+   * with lookarounds, which needs MariaDB 10.0.5+ (PCRE) or MySQL 8.0.4+
+   * (ICU). Both engines accept the same pattern — see phrasePattern(). MySQL
+   * 5.7's older regex library does not support lookarounds, but 5.7 has been
+   * end-of-life since October 2023.
+   *
+   * @param string|SearchQuery $term Free-text query over name, specialty and
+   *   interests; '' browses by filter alone. A plain string is parsed as the
+   *   search box would be, so quotes and minus signs work either way.
    * @param array $taxonomyFilters Keyed by taxonomy — see self::taxonomyFilters().
    * @param ?string $credential Restrict to this PRIMARY credential, e.g. 'MD'.
    * @param int $page The page number for pagination (1-based).
@@ -155,15 +178,23 @@ class PhysicianRepository extends ServiceEntityRepository {
    * @return array{results: Entity\Physician[], total: int, scores: array<int, int>, exactMatch: array{id: int, name: string, vocabulary: string}|null}
    */
   public function search(
-    string $term,
+    string|SearchQuery $term,
     array $taxonomyFilters = [],
     ?string $credential = null,
     int $page = 1,
     int $perPage = 20,
     ?array $nearFacilityIds = null,
   ): array {
-    $term = trim($term);
-    $page = max(1, $page);
+    $query = $term instanceof SearchQuery ? $term : SearchQuery::fromInput($term);
+    $page  = max(1, $page);
+
+    // ── Two different jobs, two different strings ─────────────────────────
+    // $term (the RANKING text) decides how results are ordered; the query's
+    // phrases, words and exclusions decide which results exist at all. They
+    // are kept apart so that `"hand surgery"` alone can still be ranked by
+    // the specialty tiers without its fuzzy name clause leaking into the
+    // WHERE and quietly re-admitting "Handley".
+    $term = $query->rankingText();
 
     $where  = [];
     $params = [];
@@ -171,9 +202,20 @@ class PhysicianRepository extends ServiceEntityRepository {
     // Which taxonomy terms does the query itself name?
     $matchedTerms = $term === '' ? null : $this->matchTerms($term);
 
-    // $term is the search query that we're searching for. Obviously we don't
-    // run an empty search.
     if ($term !== '') {
+      $params['raw']      = mb_strtolower($term);
+      $params['prefix']   = $this->escapeLike(mb_strtolower($term)) . '%';
+      $params['contains'] = '%' . $this->escapeLike(mb_strtolower($term)) . '%';
+
+      // One bound LIKE per ranking word, for the SCORE_ALL_WORDS tier below.
+      foreach ($query->rankingWords() as $i => $word) {
+        $params['rw' . $i] = '%' . $this->escapeLike(mb_strtolower($word)) . '%';
+      }
+    }
+
+    // The fuzzy text is the only part that searches loosely. Obviously we
+    // don't run an empty search.
+    if ($query->fuzzy !== '') {
       // LOWER() on both sides rather than relying on the column's collation.
       // utf8mb4_general_ci already compares case-insensitively, but stating it
       // explicitly means the behaviour does not silently change if someone
@@ -203,11 +245,51 @@ class PhysicianRepository extends ServiceEntityRepository {
         );
       }
 
-      $where[] = $nameClause;
+      // ── What makes unquoted text "fuzzy" ─────────────────────────────────
+      // Everything above matches the query as ONE string: `hand surgery`
+      // finds "Hand Surgery" but not "Surgery of the Hand". For a multi-word
+      // query, also admit anyone carrying every word SOMEWHERE — in the name
+      // or in any searchable term, in any order. Those extra results rank on
+      // the SCORE_ALL_WORDS tier, below every whole-string match, so widening
+      // the net never pushes a better match down the page.
+      //
+      // Quoting the text is how someone opts OUT of this — see the phrase
+      // clauses below. That contrast is the whole point of the feature.
+      $fuzzyWords = $query->fuzzyWords();
 
-      $params['raw']      = mb_strtolower($term);
-      $params['prefix']   = $this->escapeLike(mb_strtolower($term)) . '%';
-      $params['contains'] = '%' . $this->escapeLike(mb_strtolower($term)) . '%';
+      if (count($fuzzyWords) > 1) {
+        $nameClause = sprintf('(%s OR (%s))', $nameClause, $this->allWordsClause(count($fuzzyWords)));
+      }
+
+      $where[] = $nameClause;
+    }
+
+    // ── Exact phrases ───────────────────────────────────────────────────────
+    // Each phrase must appear in the name or in a searchable term, as whole
+    // words, contiguously. No phonetic matching and no partial words: someone
+    // who bothered to type quotes has told us precisely what they mean.
+    foreach ($query->phrases as $i => $phrase) {
+      $where[] = $this->textMatchClause('REGEXP', 'ph' . $i);
+      $params['ph' . $i] = $this->phrasePattern($phrase);
+    }
+
+    // ── Including these words ──────────────────────────────────────────────
+    // Each word must appear somewhere, in any order. A plain substring rather
+    // than a whole-word match, deliberately: this is the forgiving field, so
+    // "cardio" still finds "Cardiology".
+    foreach ($query->words as $i => $word) {
+      $where[] = $this->textMatchClause('LIKE', 'w' . $i);
+      $params['w' . $i] = '%' . $this->escapeLike(mb_strtolower($word)) . '%';
+    }
+
+    // ── Exclusions ─────────────────────────────────────────────────────────
+    // Whole-word, like the phrases. Excluding "hand" should not silently drop
+    // every Dr Handley — an exclusion that removes more than was asked is far
+    // harder to notice than an inclusion that adds too much, because the
+    // missing people simply never appear.
+    foreach ($query->excluded as $i => $phrase) {
+      $where[] = 'NOT ' . $this->textMatchClause('REGEXP', 'ex' . $i);
+      $params['ex' . $i] = $this->phrasePattern($phrase);
     }
 
     // Taxonomy filters
@@ -320,6 +402,14 @@ class PhysicianRepository extends ServiceEntityRepository {
     // the specification's priority order. That is what enforces "exact name
     // always highest": it is the first test, so nothing below can outrank it,
     // whatever else the physician also matches.
+    //
+    // The phonetic tier is an explicit WHEN rather than the ELSE it used to
+    // be. While the name clause was the only way into the result set, ELSE
+    // could only ever mean "matched by sound". Exact phrases and the
+    // narrowing fields admit people by other routes now, and labelling one of
+    // those "Similar spelling to…" on the results page would be untrue.
+    $rankingWordCount = count($query->rankingWords());
+
     $scoreSql = $term === ''
       ? (string) self::SCORE_BROWSE
       : sprintf(
@@ -333,6 +423,8 @@ class PhysicianRepository extends ServiceEntityRepository {
             WHEN LOWER(p.legal_name) LIKE :contains THEN %d
             %s
             %s
+            %s
+            WHEN SOUNDEX(SUBSTRING_INDEX(p.legal_name, \' \', -1)) = SOUNDEX(:raw) THEN %d
             ELSE %d
         END',
         self::SCORE_EXACT_FULL,
@@ -344,7 +436,13 @@ class PhysicianRepository extends ServiceEntityRepository {
         self::SCORE_CONTAINS,
         $this->termScoreBranch($matchedTerms['partialSpecialty'] ?? [], self::SCORE_PARTIAL_SPECIALTY),
         $this->termScoreBranch($matchedTerms['partialInterest'] ?? [], self::SCORE_PARTIAL_INTEREST),
+        // A single word has nothing to be "all of", and the contains tiers
+        // above already cover it, so the branch only exists for two or more.
+        $rankingWordCount > 1
+          ? sprintf('WHEN %s THEN %d', $this->allWordsClause($rankingWordCount), self::SCORE_ALL_WORDS)
+          : '',
         self::SCORE_PHONETIC,
+        self::SCORE_BROWSE,
       );
 
     // LIMIT/OFFSET are cast to int rather than bound. Placeholders in LIMIT
@@ -696,6 +794,120 @@ class PhysicianRepository extends ServiceEntityRepository {
       implode(',', array_map('intval', $termIds)),
       $score,
     );
+  }
+
+  /**
+   * "This text appears in the physician's name OR in one of their terms."
+   *
+   * The one building block behind exact phrases, included words and
+   * exclusions. They differ only in the operator and in what is bound to the
+   * placeholder, so writing the subquery once keeps the three from drifting —
+   * an exclusion that checked fewer vocabularies than an inclusion would let
+   * through exactly the people someone asked to remove.
+   *
+   * Only the free-text-searchable vocabularies are checked, the same set
+   * matchTerms() uses: excluding "spanish" should not drop everyone who SPEAKS
+   * Spanish, because language is a filter, not something the text box reaches.
+   *
+   * COALESCE on the name, because an exclusion is wrapped in NOT, and
+   * NOT (NULL OR FALSE) is NULL — a missing name would otherwise silently
+   * remove that physician from EVERY search that excludes anything.
+   *
+   * @param string $operator    One of self::TEXT_MATCH_OPERATORS.
+   * @param string $placeholder The bound parameter's name, without the colon.
+   *   Also used as the subquery's alias prefix, so it must be unique per call.
+   */
+  private function textMatchClause(string $operator, string $placeholder): string {
+    if (!in_array($operator, self::TEXT_MATCH_OPERATORS, true)) {
+      throw new \InvalidArgumentException(sprintf('Unsupported text match operator "%s".', $operator));
+    }
+
+    $nameMatch = sprintf("LOWER(COALESCE(p.legal_name, '')) %s :%s", $operator, $placeholder);
+
+    $vocabularies = $this->searchableVocabularySql();
+
+    // No searchable vocabularies would make `IN ()`, a syntax error on both
+    // engines. Unlikely, but then the name is all there is to search.
+    if ($vocabularies === '') {
+      return '(' . $nameMatch . ')';
+    }
+
+    return sprintf(
+      '(%1$s OR EXISTS (SELECT 1 FROM physician_terms %3$s_pt
+          JOIN vocabulary_terms %3$s_t ON %3$s_t.id = %3$s_pt.term_id
+          JOIN vocabularies %3$s_v ON %3$s_v.id = %3$s_t.vocabulary_id
+         WHERE %3$s_pt.physician_id = p.id
+           AND %3$s_v.name IN (%4$s)
+           AND LOWER(%3$s_t.name) %2$s :%3$s))',
+      $nameMatch,
+      $operator,
+      $placeholder,
+      $vocabularies,
+    );
+  }
+
+  /**
+   * Every ranking word appears somewhere — the clause behind SCORE_ALL_WORDS.
+   *
+   * Reads the rw0…rwN parameters search() binds from rankingWords(). Used both
+   * to widen the fuzzy WHERE and as a scoring branch, which is why it takes a
+   * count rather than binding anything itself: the same placeholders serve
+   * both, and binding twice under one name would be an error.
+   */
+  private function allWordsClause(int $count): string {
+    $clauses = [];
+
+    for ($i = 0; $i < $count; $i++) {
+      $clauses[] = $this->textMatchClause('LIKE', 'rw' . $i);
+    }
+
+    return implode(' AND ', $clauses);
+  }
+
+  /**
+   * A whole-word, case-folded regular expression for a phrase.
+   *
+   * ── Why lookarounds, not \b or [[:<:]] ─────────────────────────────────────
+   * The two engines this has to run on disagree about word boundaries:
+   * MySQL 5.7 understood [[:<:]] and MySQL 8's ICU library rejects it, while
+   * \b's idea of a "word character" shifts with the library's Unicode mode.
+   * A lookaround on [[:alnum:]] means the same thing in MariaDB's PCRE and in
+   * MySQL 8's ICU, and it also behaves at the edges of a phrase that begins or
+   * ends in punctuation, where \b goes quietly wrong.
+   *
+   * ── Why preg_quote is safe for both ────────────────────────────────────────
+   * preg_quote only ever puts a backslash in front of punctuation, never in
+   * front of a letter or digit. Both PCRE and ICU read "backslash + punctuation"
+   * as that literal character, so "C++" or "(Peds)" become literals on either
+   * engine. The pattern is bound as a parameter, so there is no SQL-level
+   * escaping to double up on.
+   *
+   * Runs of whitespace between words match \s+, so a name stored with two
+   * spaces still matches a phrase typed with one.
+   */
+  private function phrasePattern(string $phrase): string {
+    $words = preg_split('/\s+/u', mb_strtolower(trim($phrase)), -1, \PREG_SPLIT_NO_EMPTY) ?: [];
+
+    return '(?<![[:alnum:]])'
+      . implode('\s+', array_map(static fn (string $w): string => preg_quote($w), $words))
+      . '(?![[:alnum:]])';
+  }
+
+  /**
+   * The searchable vocabulary names as a quoted SQL list, e.g. 'specialty','condition'.
+   *
+   * Interpolated rather than bound because search() passes no parameter types,
+   * and ArrayParameterType would need them on every query it runs. The values
+   * come from PhysicianVocabulary's own cases — never from the request — and
+   * are quoted by the connection all the same.
+   */
+  private function searchableVocabularySql(): string {
+    $connection = $this->entityManager->getConnection();
+
+    return implode(',', array_map(
+      static fn (PhysicianVocabulary $v): string => $connection->quote($v->value),
+      PhysicianVocabulary::searchable(),
+    ));
   }
 
   /**

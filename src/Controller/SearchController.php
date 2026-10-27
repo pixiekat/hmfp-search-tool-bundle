@@ -5,6 +5,7 @@ namespace Pixiekat\HMFPSearchToolBundle\Controller;
 use Pixiekat\HMFPSearchToolBundle\Interfaces;
 use Pixiekat\HMFPSearchToolBundle\Enum\PhysicianVocabulary;
 use Pixiekat\HMFPSearchToolBundle\Repository;
+use Pixiekat\HMFPSearchToolBundle\Search\SearchQuery;
 use Pixiekat\HMFPSearchToolBundle\Services\PhysicianTaxonomyManager;
 use Pixiekat\SymfonyHelpers\Services as PixieHelperServices;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -100,10 +101,18 @@ final class SearchController extends AbstractController {
   #[Route('/search', name: 'hmfp_search_tool_search', methods: ['GET'])]
   public function search(Request $request): Response {
     // get the initial search term from the request and clean it.
-    $term = $this->queryString($request, 'q');
-    if (mb_strlen($term) > self::MAX_TERM_LENGTH) {
-      $term = mb_substr($term, 0, self::MAX_TERM_LENGTH);
-    }
+    $term = $this->boundedQueryString($request, 'q');
+
+    // The three "Narrow results" text fields. Each is capped exactly as the
+    // search box is, so splitting a long query across fields buys nothing.
+    $phrase  = $this->boundedQueryString($request, 'phrase');
+    $words   = $this->boundedQueryString($request, 'words');
+    $exclude = $this->boundedQueryString($request, 'exclude');
+
+    // One parsed query out of all four. From here on nothing needs to know
+    // whether a phrase arrived in quotes in the box or through its own field.
+    // @see \Pixiekat\HMFPSearchToolBundle\Search\SearchQuery for the syntax.
+    $query = SearchQuery::fromInput($term, $phrase, $words, $exclude);
 
     /**
      * Get the taxonomy filters.
@@ -153,7 +162,7 @@ final class SearchController extends AbstractController {
 
     // Did the user actually ask for anything? If not, don't run the search and don't log it.
     $activeFilters = array_filter($taxonomyFilters, static fn (?int $id): bool => $id !== null);
-    $hasCriteria   = $term !== '' || $activeFilters !== [] || $credential !== null || $nearFacilityIds !== null;
+    $hasCriteria   = !$query->isEmpty() || $activeFilters !== [] || $credential !== null || $nearFacilityIds !== null;
 
     $results = [];
     $total   = 0;
@@ -162,7 +171,7 @@ final class SearchController extends AbstractController {
 
     if ($hasCriteria) {
       $found = $this->physicians->search(
-        term: $term,
+        term: $query,
         taxonomyFilters: $taxonomyFilters,
         credential: $credential,
         page: $page,
@@ -179,6 +188,9 @@ final class SearchController extends AbstractController {
       // overhead of writing to the database for every search.
       $this->auditLogManager->logToLogger('search.performed', null, [
         'term'        => $term,
+        'phrases'     => $query->phrases,
+        'words'       => $query->words,
+        'excluded'    => $query->excluded,
         'filters'     => $taxonomyFilters,
         'credential'  => $credential,
         'resultCount' => $total,
@@ -191,7 +203,10 @@ final class SearchController extends AbstractController {
         $this->searchEvents->record(
           term: $term === '' ? null : mb_strtolower($term),
           resultCount: $total,
-          filtersUsed: $this->appliedFilterKeys($taxonomyFilters, $credential, $nearFacilityIds),
+          filtersUsed: [
+            ...$this->appliedFilterKeys($taxonomyFilters, $credential, $nearFacilityIds),
+            ...$query->appliedKeys(),
+          ],
           matchedTermId: $found['exactMatch']['id'] ?? null,
           matchedTermName: $found['exactMatch']['name'] ?? null,
           matchedVocabulary: $found['exactMatch']['vocabulary'] ?? null,
@@ -208,9 +223,21 @@ final class SearchController extends AbstractController {
       'specialtyId'  => $taxonomyFilters['specialty'] ?? null,
       'credential'   => $credential,
       'hasCriteria'  => $hasCriteria,
+      // Counts quoted phrases and -exclusions typed in the BOX as well as the
+      // three fields, because both narrow the results — and a "2 applied"
+      // badge that ignores one of them would be explaining the wrong thing.
       'activeFilterCount' => count($activeFilters)
         + ($credential !== null ? 1 : 0)
-        + ($nearFacilityIds !== null ? 1 : 0),
+        + ($nearFacilityIds !== null ? 1 : 0)
+        + $query->narrowingCount(),
+
+      // text narrowing: the raw field values to refill the inputs with, and
+      // the parsed query for the summary line and the highlighting.
+      'phrase'         => $phrase,
+      'words'          => $words,
+      'exclude'        => $exclude,
+      'query'          => $query,
+      'highlightTerms' => $query->highlightTerms(),
 
       // proximity
       'nearFacilityId' => $nearFacilityId,
@@ -254,11 +281,7 @@ final class SearchController extends AbstractController {
   #[IsGranted(Interfaces\Security\Voter\SearchVoterInterface::PERMISSION_CAN_ACCESS_SEARCH)]
   #[Route('/search/suggest', name: 'hmfp_search_tool_search_suggest', methods: ['GET'])]
   public function suggest(Request $request): JsonResponse {
-    $term = $this->queryString($request, 'q');
-
-    if (mb_strlen($term) > self::MAX_TERM_LENGTH) {
-      $term = mb_substr($term, 0, self::MAX_TERM_LENGTH);
-    }
+    $term = $this->boundedQueryString($request, 'q');
 
     $suggestions = $this->physicians->suggest($term, self::SUGGESTION_LIMIT);
 
@@ -392,6 +415,20 @@ final class SearchController extends AbstractController {
     $raw = $request->query->all()[$key] ?? null;
 
     return is_string($raw) ? trim($raw) : '';
+  }
+
+  /**
+   * queryString(), cut to MAX_TERM_LENGTH.
+   *
+   * Every free-text input goes through this, so the cap lives in one place
+   * instead of being repeated (and eventually forgotten) per field.
+   */
+  private function boundedQueryString(Request $request, string $key): string {
+    $value = $this->queryString($request, $key);
+
+    return mb_strlen($value) > self::MAX_TERM_LENGTH
+      ? mb_substr($value, 0, self::MAX_TERM_LENGTH)
+      : $value;
   }
 
   /**

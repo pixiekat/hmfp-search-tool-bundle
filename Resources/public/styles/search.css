@@ -182,7 +182,8 @@ All styles pertaining to the physical search form, including the filters and sub
 }
 
 .filter { flex: 1 1 14rem; min-width: 0; }
-.filter select {
+.filter select,
+.filter input[type="text"] {
   width: 100%;
   font-size: 1rem;
   padding: 0.5rem;
@@ -190,6 +191,25 @@ All styles pertaining to the physical search form, including the filters and sub
   border-radius: var(--hmfp-radius);
   background: var(--hmfp-bg);
   color: var(--hmfp-text);
+}
+
+/* The text-narrowing group's legend is shown (the dropdown group's is not), so
+   it is styled as a small heading for the group rather than left at the
+   browser's default, which reads as body text floating above the fields.
+   The legend is laid out by the fieldset, not as a flex item, so the grid's
+   gap does not apply to it — hence its own margin. */
+.text-filters > legend {
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0;
+  margin-bottom: 0.4rem;
+}
+
+/* A clear seam between the two groups, so the text fields do not read as
+   three more dropdown-style filters. */
+.text-filters {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--hmfp-border);
 }
 
 .search-actions {

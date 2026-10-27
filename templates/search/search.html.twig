@@ -72,9 +72,17 @@
           <option value="{{ suggestion }}"></option>
         {% endfor %}
       </datalist>
+      {#
+        The quote and minus syntax is explained right here, in plain words,
+        rather than only in a help page nobody opens. It is also entirely
+        optional: the "Narrow results" fields below do the same job for anyone
+        who would rather not learn any syntax at all.
+      #}
       <p id="q-hint" class="hint">
         Name, specialty or clinical interest. Close spellings are matched too —
-        “smyth” finds “Smith”.
+        “smyth” finds “Smith”. Put words in quotes, such as “"hand surgery"”, to
+        match that exact phrase, or put a minus before a word, such as
+        “-pediatric”, to leave it out.
       </p>
     </div>
 
@@ -104,6 +112,52 @@
           <span class="filter-count">{{ activeFilterCount }} applied</span>
         {%- endif %}
       </summary>
+
+      {#
+        ── Text narrowing ─────────────────────────────────────────────────────
+        The search box's quote and minus syntax, as labelled fields. Many
+        people never learn search operators, and many more do not remember
+        them under pressure; a field that says what it does needs no learning.
+        Both routes feed the same parsed query, so they can be mixed freely.
+
+        Its own fieldset with a VISIBLE legend, unlike the dropdowns below:
+        "Exactly this phrase" read on its own by a screen reader is ambiguous
+        — this phrase of what? — and the legend supplies the answer. Visible
+        too, because sighted users need the same grouping cue.
+
+        type="text" rather than type="search": these are refinements of the
+        search, not searches in their own right, and type="search" adds a
+        clear button and Enter-to-submit semantics that would suggest
+        otherwise. Pressing Enter in any of them still submits the form, as it
+        does in any text field.
+      #}
+      <fieldset class="filters-grid text-filters">
+        <legend>Match text</legend>
+
+        <div class="filter">
+          <label for="phrase">Exactly this phrase</label>
+          <input type="text" id="phrase" name="phrase" value="{{ phrase }}"
+                 maxlength="100" spellcheck="false" autocomplete="off"
+                 aria-describedby="phrase-hint">
+          <p id="phrase-hint" class="hint">Whole words, in this order.</p>
+        </div>
+
+        <div class="filter">
+          <label for="words">Including these words</label>
+          <input type="text" id="words" name="words" value="{{ words }}"
+                 maxlength="100" spellcheck="false" autocomplete="off"
+                 aria-describedby="words-hint">
+          <p id="words-hint" class="hint">Every word, in any order.</p>
+        </div>
+
+        <div class="filter">
+          <label for="exclude">Excludes this phrase</label>
+          <input type="text" id="exclude" name="exclude" value="{{ exclude }}"
+                 maxlength="100" spellcheck="false" autocomplete="off"
+                 aria-describedby="exclude-hint">
+          <p id="exclude-hint" class="hint">Leaves out anyone whose name, specialty or interests contain it.</p>
+        </div>
+      </fieldset>
 
       <fieldset class="filters-grid">
         <legend class="visually-hidden">Narrow results</legend>
@@ -239,6 +293,12 @@
       </p>
       <ul class="suggestions">
         <li>Check the spelling, or try just the surname.</li>
+        {% if query.phrases is not empty %}
+          <li>Remove the quotes, or clear “Exactly this phrase”, to match the words loosely.</li>
+        {% endif %}
+        {% if query.excluded is not empty %}
+          <li>Check what is being left out — an excluded word removes everyone it appears for.</li>
+        {% endif %}
         <li>Remove a filter — the more you apply, the narrower the result.</li>
         <li>Try a shorter fragment, such as “val” instead of “valente”.</li>
       </ul>
@@ -270,6 +330,20 @@
       {% endif %}
 
       {#
+        Spell out how the text was READ, not just what was typed. Quotes are
+        easy to type by accident and smart quotes look different on every
+        device, so "Exact phrase: hand surgery" is the confirmation that the
+        search did what the person meant — or the clue that it did not.
+      #}
+      {% if query.phrases is not empty or query.words is not empty or query.excluded is not empty %}
+        <p class="muted text-match-summary">
+          {%- if query.phrases is not empty %}Exact phrase: {% for p in query.phrases %}“{{ p }}”{% if not loop.last %}, {% endif %}{% endfor %}. {% endif -%}
+          {%- if query.words is not empty %}Including: {{ query.words|join(', ') }}. {% endif -%}
+          {%- if query.excluded is not empty %}Excluding: {% for x in query.excluded %}“{{ x }}”{% if not loop.last %}, {% endif %}{% endfor %}.{% endif -%}
+        </p>
+      {% endif %}
+
+      {#
         An ordered list, because these results ARE ranked — best match first.
         <ol> tells a screen reader "item 3 of 20", which is exactly the context
         a sighted user gets from position on the page.
@@ -279,13 +353,17 @@
           {% set score = scores[physician.id]|default(0) %}
           <li class="result">
             <h3 class="result-name">
-              {# hmfp_highlight escapes before inserting <mark> — see SearchExtension. #}
+              {#
+                hmfp_highlight escapes before inserting <mark> — see SearchExtension.
+                Given the PARSED terms rather than the raw box, so quotes and
+                minus signs are not themselves looked for in the name.
+              #}
               {% if is_granted('ROLE_USER') %}
                 <a href="{{ path('hmfp_search_tool_profile_view', { id: physician.id }) }}">
-                  {{ physician.legalName|hmfp_highlight(term) }}
+                  {{ physician.legalName|hmfp_highlight(highlightTerms) }}
                 </a>
               {% else %}
-                {{ physician.legalName|hmfp_highlight(term) }}
+                {{ physician.legalName|hmfp_highlight(highlightTerms) }}
               {% endif %}
               {% if physician.credentials is not empty %}
                 <span class="credentials">{{ physician.credentials }}</span>

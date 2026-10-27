@@ -43,6 +43,8 @@ return static function (ContainerConfigurator $container): void {
             $bundleDir . '/src/Exception/',
             $bundleDir . '/src/Message/',
             $bundleDir . '/src/ReadModel/',
+            // Per-request value objects (SearchQuery) — never shared services.
+            $bundleDir . '/src/Search/',
             $bundleDir . '/src/HMFPSearchToolBundle.php',
         ]);
 };
