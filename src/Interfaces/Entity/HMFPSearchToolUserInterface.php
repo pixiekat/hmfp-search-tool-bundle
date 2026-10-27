@@ -80,6 +80,9 @@ interface HMFPSearchToolUserInterface {
   public const SYSADMIN_EMAIL_ADDRESSES = [
     'kebloom@bidmc.harvard.edu',
     'yquintan@bidmc.harvard.edu',
+    'lharvey@bidmc.harvard.edu',
+    'aaperkin@bidmc.harvard.edu',
+    'ndantulu@bidmc.harvard.edu',
   ];
 
   /**
