@@ -49,6 +49,11 @@ class AdminUserFormType extends AbstractType {
       ->add('active', FormTypes\CheckboxType::class, [
         'label' => 'Active',
       ])
+      ->add('isSamlUser', FormTypes\CheckboxType::class, [
+        'label' => 'SAML User',
+        'help' => 'If checked, this user will be able to log in using SAML SSO. If unchecked, they will use a local password.',
+        'required' => false,
+      ])
     ;
 
     /**
