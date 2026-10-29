@@ -283,13 +283,19 @@ class PhysicianRepository extends ServiceEntityRepository {
     }
 
     // ── Exclusions ─────────────────────────────────────────────────────────
-    // Whole-word, like the phrases. Excluding "hand" should not silently drop
-    // every Dr Handley — an exclusion that removes more than was asked is far
-    // harder to notice than an inclusion that adds too much, because the
-    // missing people simply never appear.
+    // Anchored at the START of a word but open at the end — a deliberate
+    // middle ground, chosen against the real data:
+    //  - fully whole-word, "-pediatric" kept everyone in "Pediatrics" and
+    //    "Pediatrics-Cardiology", which is plainly not what was meant;
+    //  - a bare substring, "-hand" would silently drop every Dr Shand. An
+    //    exclusion that removes too much is far harder to notice than an
+    //    inclusion that adds too much, because the missing people simply
+    //    never appear.
+    // Anchoring the start keeps word endings ("-s", "-ology") forgiving while
+    // never matching from the middle of an unrelated word.
     foreach ($query->excluded as $i => $phrase) {
       $where[] = 'NOT ' . $this->textMatchClause('REGEXP', 'ex' . $i);
-      $params['ex' . $i] = $this->phrasePattern($phrase);
+      $params['ex' . $i] = $this->phrasePattern($phrase, wholeWordEnd: false);
     }
 
     // Taxonomy filters
@@ -884,13 +890,16 @@ class PhysicianRepository extends ServiceEntityRepository {
    *
    * Runs of whitespace between words match \s+, so a name stored with two
    * spaces still matches a phrase typed with one.
+   *
+   * @param bool $wholeWordEnd When false, the phrase's last word may run on —
+   *   "pediatric" then matches "Pediatrics". Used for exclusions; see search().
    */
-  private function phrasePattern(string $phrase): string {
+  private function phrasePattern(string $phrase, bool $wholeWordEnd = true): string {
     $words = preg_split('/\s+/u', mb_strtolower(trim($phrase)), -1, \PREG_SPLIT_NO_EMPTY) ?: [];
 
     return '(?<![[:alnum:]])'
       . implode('\s+', array_map(static fn (string $w): string => preg_quote($w), $words))
-      . '(?![[:alnum:]])';
+      . ($wholeWordEnd ? '(?![[:alnum:]])' : '');
   }
 
   /**
