@@ -20,7 +20,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 #[AsCommand(
   name: 'hmfp:projections:rebuild',
-  description: 'Rebuilds physician taxonomy links from the edit log (clinical interests).',
+  description: 'Rebuilds physician taxonomy links from the edit log (clinical and research interests).',
 )]
 final class RebuildProjectionsCommand extends Command {
 

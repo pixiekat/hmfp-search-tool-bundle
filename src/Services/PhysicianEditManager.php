@@ -23,7 +23,7 @@ final class PhysicianEditManager {
   ) {  }
 
   /**
-   * Records a proposed set of taxonomy values — clinical interests today.
+   * Records a proposed set of taxonomy values: clinical or research interests.
    *
    * The names are stored as JSON exactly as given (bar trimming and de-duping);
    * nothing is resolved to a Term here. Resolution happens at approval, because
@@ -422,7 +422,8 @@ final class PhysicianEditManager {
       // physician_terms, which the projection maintains. Returning null here
       // rather than throwing keeps resolveMany() total, but a caller asking for
       // a taxonomy field this way has almost certainly made a mistake.
-      EditableField::ClinicalInterests => null,
+      EditableField::ClinicalInterests,
+      EditableField::ResearchInterests => null,
     };
   }
 }

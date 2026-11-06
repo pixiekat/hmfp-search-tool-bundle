@@ -24,12 +24,22 @@ enum EditableField: string {
   case ClinicalInterests = 'clinical_interests';
 
   /**
+   * Research interests.
+   *
+   * Taxonomy-backed like ClinicalInterests, writing into its own vocabulary.
+   * Unlike clinical interests there is no import feed: the only source is a
+   * claimed physician (or an editor) filling in the profile form.
+   */
+  case ResearchInterests = 'research_interests';
+
+  /**
    * Human-readable name, for form labels and the review queue.
    */
   public function label(): string {
     return match ($this) {
       self::Bio               => 'Biography',
       self::ClinicalInterests => 'Clinical interests',
+      self::ResearchInterests => 'Research interests',
     };
   }
 
@@ -44,6 +54,7 @@ enum EditableField: string {
     return match ($this) {
       self::Bio               => false,
       self::ClinicalInterests => true,
+      self::ResearchInterests => true,
     };
   }
 
@@ -54,6 +65,7 @@ enum EditableField: string {
     return match ($this) {
       self::Bio               => null,
       self::ClinicalInterests => PhysicianVocabulary::ClinicalInterest,
+      self::ResearchInterests => PhysicianVocabulary::ResearchInterest,
     };
   }
 
@@ -67,6 +79,6 @@ enum EditableField: string {
    * @return list<self>
    */
   public static function active(): array {
-    return [self::Bio, self::ClinicalInterests];
+    return [self::Bio, self::ClinicalInterests, self::ResearchInterests];
   }
 }

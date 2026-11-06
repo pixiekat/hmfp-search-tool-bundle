@@ -417,6 +417,18 @@
               </p>
             {% endif %}
 
+            {# Same pattern as clinical interests, against its own vocabulary and filter. #}
+            {% set research_interests = physician.terms|filter(t => t.vocabulary and t.vocabulary.name == 'research_interest') %}
+
+            {% if research_interests is not empty %}
+              <p class="result-meta">
+                <span class="label">Research Interests:</span>
+                {% for term in research_interests|sort((a, b) => a.label|lower <=> b.label|lower) %}
+                  <a href="{{ path('hmfp_search_tool_search', app.request.query.all|merge({research_interest: term.id, page: 1})) }}">{{ term.label }}</a>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              </p>
+            {% endif %}
+
             {#
               Narrowed to the specialty vocabulary rather than listing
               physician.terms wholesale. That collection holds EVERY taxonomy —

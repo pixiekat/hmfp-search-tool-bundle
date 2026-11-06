@@ -76,6 +76,25 @@
         </div>
 
         <div class="field">
+          <label for="research-interests">Research interests</label>
+          {#
+            Same one-per-LINE rule as clinical interests, for the same reason:
+            research topics contain commas too.
+
+            name="research_interests" must stay distinct from the clinical
+            field's name="interests". PHP keeps only the LAST field with a given
+            name, so sharing one would silently drop whichever came first.
+            PhysicianProfileController::TERM_FIELDS maps each name to its field.
+          #}
+          <p id="research-interests-hint" class="hint">
+            One per line. Shown on the public profile and searchable, so be
+            specific — “Heart failure outcomes” says more than “Cardiology”.
+            Leave empty to remove them all.
+          </p>
+          <textarea id="research-interests" name="research_interests" rows="8" aria-describedby="research-interests-hint">{{ research_interests }}</textarea>
+        </div>
+
+        <div class="field">
           <label for="interests">Clinical interests</label>
           {#
             One per LINE, not comma-separated: clinical interests contain commas

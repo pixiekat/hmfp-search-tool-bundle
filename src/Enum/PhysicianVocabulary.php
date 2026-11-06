@@ -43,6 +43,17 @@ enum PhysicianVocabulary: string {
   case ClinicalInterest = 'clinical_interest';
 
   /**
+   * Research topics, e.g. "Heart failure outcomes".
+   *
+   * A separate vocabulary from ClinicalInterest rather than a flag on it: the
+   * same words can legitimately mean "I treat this" in one and "I study this"
+   * in the other, and a patient filtering by clinical interest should not land
+   * on someone who only researches it. Seeded by claimed physicians through
+   * the edit form (EditableField::ResearchInterests); there is no import feed.
+   */
+  case ResearchInterest = 'research_interest';
+
+  /**
    * The human-readable name for the Vocabulary row and for form labels.
    */
   public function label(): string {
@@ -53,6 +64,7 @@ enum PhysicianVocabulary: string {
       self::Procedure          => 'Procedure',
       self::BoardCertification => 'Board certification',
       self::ClinicalInterest   => 'Clinical interest',
+      self::ResearchInterest   => 'Research interest',
     };
   }
 
@@ -70,6 +82,7 @@ enum PhysicianVocabulary: string {
       self::Procedure          => 'Procedures',
       self::BoardCertification => 'Board certifications',
       self::ClinicalInterest   => 'Clinical interests',
+      self::ResearchInterest   => 'Research interests',
     };
   }
 
@@ -86,6 +99,7 @@ enum PhysicianVocabulary: string {
     return [
       self::Specialty,
       self::ClinicalInterest,
+      self::ResearchInterest,
       self::Condition,
       self::Procedure,
       self::BoardCertification,
@@ -98,7 +112,11 @@ enum PhysicianVocabulary: string {
    */
   public function isFreeTextSearchable(): bool {
     return match ($this) {
-      self::Specialty, self::ClinicalInterest, self::Condition, self::Procedure => true,
+      // ResearchInterest is searchable like ClinicalInterest. Because it is not
+      // Specialty, PhysicianRepository::matchTerms() scores its matches in the
+      // same "interest" tier as clinical interests.
+      self::Specialty, self::ClinicalInterest, self::ResearchInterest,
+      self::Condition, self::Procedure => true,
       self::Language, self::BoardCertification => false,
     };
   }
@@ -110,6 +128,7 @@ enum PhysicianVocabulary: string {
     return match ($this) {
       self::Specialty          => 'All specialties',
       self::ClinicalInterest   => 'Any clinical interest',
+      self::ResearchInterest   => 'Any research interest',
       self::Condition          => 'Any condition',
       self::Procedure          => 'Any procedure',
       self::BoardCertification => 'Any board certification',

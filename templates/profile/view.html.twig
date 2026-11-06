@@ -34,6 +34,7 @@
   {% set specialties = physician.terms|filter(t => t.vocabulary and t.vocabulary.name == 'specialty')|sort(byName) %}
   {% set languages = physician.terms|filter(t => t.vocabulary and t.vocabulary.name == 'language')|sort(byName) %}
   {% set interestTerms = (interests is defined and interests is not empty) ? interests|sort(byName) : [] %}
+  {% set researchTerms = (research_interests is defined and research_interests is not empty) ? research_interests|sort(byName) : [] %}
 
   {% set canSearch = is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\SearchVoterInterface::PERMISSION_CAN_ACCESS_SEARCH'), physician) %}
   {% set canEdit = is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\PhysicianVoterInterface::PERMISSION_CAN_EDIT_PHYSICIAN'), physician) %}
@@ -103,6 +104,24 @@
           <ul class="tag-list">
             {% for term in interestTerms %}
               <li><a href="{{ path('hmfp_search_tool_search', {clinical_interest: term.id}) }}">{{ term.name }}</a></li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+
+      {% if researchTerms is not empty %}
+        <section aria-labelledby="research-interests-heading">
+          <h2 id="research-interests-heading">Research interests</h2>
+          {#
+            Same tag-list pattern as clinical interests above. term.label shows
+            the term's display-label override when an admin has set one, and
+            the name otherwise. Each link searches the research_interest filter,
+            not clinical_interest: studying something is not the same as
+            treating it.
+          #}
+          <ul class="tag-list">
+            {% for term in researchTerms %}
+              <li><a href="{{ path('hmfp_search_tool_search', {research_interest: term.id}) }}">{{ term.label }}</a></li>
             {% endfor %}
           </ul>
         </section>

@@ -23,9 +23,26 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 final class PhysicianProfileController extends AbstractController {
 
   /**
-   * Separator for the clinical interests field.
+   * Separator for the one-per-line interest textareas.
    */
   private const INTEREST_SEPARATOR = "\n";
+
+  /**
+   * The taxonomy-backed textareas on the edit form, keyed by their POST name.
+   *
+   * One map drives the pre-fill (viewData), the submit loop, and the profile
+   * view, so adding another one-per-line taxonomy field is one line here plus
+   * its markup. The keys are also the Twig variable names the templates read.
+   *
+   * 'interests' keeps its original name for clinical interests so existing
+   * templates and any bookmarked/in-flight forms keep working.
+   *
+   * @var array<string, EditableField>
+   */
+  private const TERM_FIELDS = [
+    'interests'          => EditableField::ClinicalInterests,
+    'research_interests' => EditableField::ResearchInterests,
+  ];
 
   public function __construct(
     private readonly EntityManagerInterface $entityManager,
@@ -49,7 +66,9 @@ final class PhysicianProfileController extends AbstractController {
     return $this->render('@HMFPSearchTool/profile/view.html.twig', [
       'physician' => $physician,
       'bio' => $this->editManager->resolve($physician, EditableField::Bio),
-      'interests' => $this->taxonomy->termsFor($physician, PhysicianVocabulary::ClinicalInterest),
+      // Term entities (not names) under each TERM_FIELDS key, so the view can
+      // link every term to a search for it.
+      ...$this->termsByField($physician),
       'edits' => $edits,
       'has_claim' => $hasClaim,
       'lastSeenInImportAt' => $physician->getLastSeenInImportAt(),
@@ -96,20 +115,16 @@ final class PhysicianProfileController extends AbstractController {
       $proposed++;
     }
 
-    $interests = $this->splitInterests((string) ($request->request->all()['interests'] ?? ''));
-    $current   = array_map(
-      static fn ($term): string => (string) $term->getName(),
-      $this->taxonomy->termsFor($physician, PhysicianVocabulary::ClinicalInterest),
-    );
+    // Each taxonomy textarea is compared against what is LIVE, for the same
+    // no-op reason as the bio above. A field missing from the POST entirely is
+    // treated as empty, matching how the bio behaves.
+    foreach (self::TERM_FIELDS as $input => $field) {
+      $names = $this->splitInterests((string) ($request->request->all()[$input] ?? ''));
 
-    if ($this->differs($interests, $current)) {
-      $this->editManager->proposeTerms(
-        $physician,
-        EditableField::ClinicalInterests,
-        $interests,
-        $user,
-      );
-      $proposed++;
+      if ($this->differs($names, $this->termNames($physician, $field))) {
+        $this->editManager->proposeTerms($physician, $field, $names, $user);
+        $proposed++;
+      }
     }
 
     if ($proposed === 0) {
@@ -143,10 +158,11 @@ final class PhysicianProfileController extends AbstractController {
       // next change rather than a blank slate that silently discards the
       // current value if submitted untouched.
       'bio' => $this->editManager->resolve($physician, EditableField::Bio),
-      'interests' => implode(self::INTEREST_SEPARATOR, array_map(
-        static fn ($term): string => (string) $term->getName(),
-        $this->taxonomy->termsFor($physician, PhysicianVocabulary::ClinicalInterest),
-      )),
+      // One newline-joined string per TERM_FIELDS key, ready for a textarea.
+      ...array_map(
+        fn (EditableField $field): string => implode(self::INTEREST_SEPARATOR, $this->termNames($physician, $field)),
+        self::TERM_FIELDS,
+      ),
 
       // Live-but-unreviewed edits, shown back so the editor knows a reviewer
       // will be looking at them. The form fields already show these values,
@@ -190,7 +206,45 @@ final class PhysicianProfileController extends AbstractController {
   }
 
   /**
-   * Splits the interests textarea into a clean list.
+   * The live terms for every TERM_FIELDS field, keyed by its form/Twig name.
+   *
+   * @return array<string, list<\Pixiekat\SymfonyHelpers\Entity\Term>>
+   */
+  private function termsByField(Entity\Physician $physician): array {
+    return array_map(
+      fn (EditableField $field): array => $this->taxonomy->termsFor($physician, $this->vocabularyOf($field)),
+      self::TERM_FIELDS,
+    );
+  }
+
+  /**
+   * The NAMES of a field's live terms, for pre-filling and diffing.
+   *
+   * Names, never display labels: the name is what proposeTerms() matches on,
+   * so pre-filling with a label would make an untouched form look changed and
+   * would create a duplicate term spelled like the label.
+   *
+   * @return list<string>
+   */
+  private function termNames(Entity\Physician $physician, EditableField $field): array {
+    return array_map(
+      static fn ($term): string => (string) $term->getName(),
+      $this->taxonomy->termsFor($physician, $this->vocabularyOf($field)),
+    );
+  }
+
+  /**
+   * A taxonomy field's vocabulary, failing loudly if it has none.
+   *
+   * Only reachable if someone adds a scalar field to TERM_FIELDS.
+   */
+  private function vocabularyOf(EditableField $field): PhysicianVocabulary {
+    return $field->vocabulary()
+      ?? throw new \LogicException(sprintf('%s is not a taxonomy field.', $field->value));
+  }
+
+  /**
+   * Splits an interests textarea into a clean list.
    *
    * @return list<string>
    */
