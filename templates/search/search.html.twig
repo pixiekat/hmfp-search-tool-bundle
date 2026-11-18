@@ -358,7 +358,7 @@
                 Given the PARSED terms rather than the raw box, so quotes and
                 minus signs are not themselves looked for in the name.
               #}
-              {% if is_granted('ROLE_USER') %}
+              {% if is_granted('can_view_physician') %}
                 <a href="{{ path('hmfp_search_tool_profile_view', { id: physician.id }) }}">
                   {{ physician.legalName|hmfp_highlight(highlightTerms) }}
                 </a>

@@ -39,6 +39,15 @@ class PhysicianVoter extends PixieHelperSecurity\Voter\BaseVoter implements Inte
   }
 
   protected function voteOnAttribute(string $attribute, mixed $subject, TokenInterface $token, ?Vote $vote = null): bool {
+    // Attributes that do NOT require a signed-in user are decided first.
+    // Logged-out visitors arrive with a NullToken whose getUser() is null, so
+    // anything below the user guard is unreachable for them — which is how
+    // search kept bouncing anonymous visitors to /login. Search is open to
+    // everyone; logging out (and anything added later) stays behind the guard.
+    if ($attribute === self::PERMISSION_CAN_VIEW_PHYSICIAN) {
+      return $this->canViewPhysician(null, $subject instanceof Entity\Physician ? $subject : null);
+    }
+
     $user = $token->getUser();
 
     if (!$user instanceof UserInterface) {
@@ -56,12 +65,37 @@ class PhysicianVoter extends PixieHelperSecurity\Voter\BaseVoter implements Inte
         self::PERMISSION_CAN_CLAIM_PHYSICIAN => $this->canClaimPhysician($user, $physician),
         self::PERMISSION_CAN_MANAGE_DELEGATES => $this->canManageDelegates($user, $physician),
         self::PERMISSION_CAN_EDIT_PHYSICIAN => $this->canProposePhysicianEdits($user, $physician),
+        self::PERMISSION_CAN_VIEW_PHYSICIAN => $this->canViewPhysician($user, $physician),
         self::PERMISSION_CAN_VIEW_PHYSICIAN_EDITS => $this->security->isGranted('ROLE_USER'),
         self::PERMISSION_CAN_VIEW_ALL_PHYSICIAN_EDITS => $this->canViewAllPhysicianEdits($user),
         self::PERMISSION_CAN_APPROVE_PHYSICIAN_EDITS => $this->canApprovePhysicianEdits($user),
         default => false,
     };
 
+    return false;
+  }
+
+  private function canViewPhysician(?UserInterface $user = null, ?Entity\Physician $physician = null): bool {
+    if (!$user instanceof Entity\User) {
+      // logged out can always view.
+      return true;
+    }
+
+    // if you can approve physician edits or you have any admin role, you can view physicians.
+    if ($this->canApprovePhysicianEdits($user) || $this->hasAtLeastOneAdminRole($user, $this->getAdminRoles())) {
+      return true;
+    }
+
+    // Answered from the memoised set rather than with a query per call, because
+    // the search results template asks this once per row.
+    if ($physician !== null && $this->holdsClaimOn($user, $physician)) {
+      return true;
+    }
+
+    // if you are logged on, you can view.
+    return $this->security->isGranted('IS_AUTHENTICATED_FULLY');
+
+    // otherwise, you cannot view physicians.
     return false;
   }
 

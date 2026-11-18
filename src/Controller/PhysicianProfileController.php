@@ -53,7 +53,7 @@ final class PhysicianProfileController extends AbstractController {
     private readonly PhysicianTaxonomyManager $taxonomy,
   ) {  }
 
-  #[IsGranted('ROLE_USER')]
+  #[IsGranted(Interfaces\Security\Voter\PhysicianVoterInterface::PERMISSION_CAN_VIEW_PHYSICIAN, subject: 'physician')]
   #[Route('/physicians/{id}', name: 'hmfp_search_tool_profile_view', requirements: ['id' => '\\d+'], methods: ['GET'])]
   public function viewPhysician(Entity\Physician $physician): Response {
     $edits = $this->edits->findHistoryFor($physician);

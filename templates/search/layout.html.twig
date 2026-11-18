@@ -72,6 +72,10 @@
           {% endif %}
         </nav>
       {% endif %}
+    {%  else  %}
+      <nav class="site-admin-nav" aria-label="Administration">
+        <a class="button button--secondary" href="{{ path('pixiekat_symfony_helpers_login') }}">Log in</a>
+      </nav>
     {% endif %}
   </header>
 
