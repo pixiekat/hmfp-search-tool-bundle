@@ -92,7 +92,14 @@ a:hover { color: var(--hmfp-link-hover); }
 }
 
 /* margin-left: auto keeps the button pinned right even after it wraps to its own line. */
-.site-admin-nav { margin-left: auto; }
+.site-admin-nav {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+/* The logout control is a <form> (see security/_logout_form.html.twig). Inline
+   with no margin so it sits in the header nav exactly where the old link did. */
+.logout-form { display: inline; margin: 0; }
 .site-footer {
   border-top: 1px solid var(--hmfp-border);
   color: var(--hmfp-muted);
@@ -295,6 +302,14 @@ mark {
   background: var(--hmfp-link-hover);
   border-color: var(--hmfp-link-hover);
   color: var(--hmfp-bg);
+}
+/* .button on a real <button> (the logout form). Browsers give buttons their own
+   font and an arrow cursor; inherit the page font so it matches the link
+   buttons beside it, and show the hand so it reads as clickable. */
+button.button {
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
 /* Outlined variant for the less important actions, so the main one stands out. */
 .button--secondary {
