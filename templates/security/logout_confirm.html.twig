@@ -1,0 +1,41 @@
+{#
+  "Log out?" — rendered by LogoutController. LogoutRequestGuard redirects here
+  when the logout path is reached any way other than the logout button: an old
+  bookmark, a stale tab, a typed URL, or a form whose security token expired.
+  Signed-out visitors never see it; the controller sends them home.
+
+  The page must NOT read as though logout happened, because it has not. On a
+  shared computer, someone who sees "you're logged out" and walks away leaves
+  their session open. So the heading is a question and the first sentence says
+  plainly that they are still signed in.
+
+  Variables:
+    expired  bool  TRUE when a logout form was submitted with a missing or
+                   expired token (served as 403); FALSE for a plain visit.
+
+  @see \Pixiekat\HMFPSearchToolBundle\Controller\LogoutController
+  @see \Pixiekat\HMFPSearchToolBundle\EventListener\LogoutRequestGuard
+#}
+{% extends '@HMFPSearchTool/search/layout.html.twig' %}
+
+{% block search_page_title %}Log out?{% endblock %}
+
+{% block content %}
+  <section class="logout-confirm" aria-labelledby="logout-confirm-heading">
+    <h2 id="logout-confirm-heading">Log out?</h2>
+
+    {% if expired %}
+      <p>
+        <strong>You have not been logged out yet.</strong>
+        The page you used had been open for a while and its security check ran out.
+        Please use the button below to log out.
+      </p>
+    {% else %}
+      <p><strong>You are still logged in.</strong> To log out, use the button below.</p>
+    {% endif %}
+
+    {% include '@HMFPSearchTool/security/_logout_form.html.twig' with { button_class: 'button' } %}
+
+    <p><a href="{{ path('hmfp_search_tool_home') }}">Stay logged in and go back to search</a></p>
+  </section>
+{% endblock %}

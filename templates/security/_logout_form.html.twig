@@ -1,0 +1,25 @@
+{#
+  The one logout control, shared by every page that offers "Log out".
+
+  Why a form and not a link:
+    - Turbo 8 prefetches LINKS on hover; a GET to the logout path used to sign
+      people out just by hovering. Forms are never prefetched.
+    - A POST with a CSRF token stops other sites forcing a logout.
+  LogoutRequestGuard is what enforces both; see that class for the full story.
+
+  data-turbo="false": logout ends in a redirect to the identity provider (a
+  different origin) for SSO users. Turbo submits forms with fetch(), which
+  cannot follow that redirect, so this must be an ordinary full-page submit.
+  It also means it works the same with JavaScript off.
+
+  Variables (all optional):
+    button_class  CSS classes for the button   (default: "button button--secondary")
+    form_class    extra classes for the <form> (default: none)
+    label         button text                  (default: "Log out")
+
+  @see \Pixiekat\HMFPSearchToolBundle\EventListener\LogoutRequestGuard
+#}
+<form class="logout-form {{ form_class|default('') }}" method="post" action="{{ path('saml_logout') }}" data-turbo="false">
+  <input type="hidden" name="_logout_token" value="{{ csrf_token('logout') }}">
+  <button type="submit" class="{{ button_class|default('button button--secondary') }}">{{ label|default('Log out') }}</button>
+</form>

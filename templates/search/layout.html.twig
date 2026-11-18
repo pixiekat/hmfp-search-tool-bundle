@@ -63,7 +63,8 @@
       {% if canAdminister or canReports or canLogout %}
         <nav class="site-admin-nav" aria-label="Administration">
           {% if canLogout %}
-            <a class="button button--secondary" href="{{ path('saml_logout') }}">Log out</a>
+            {# A POST form, not a link — see _logout_form.html.twig for why. #}
+            {% include '@HMFPSearchTool/security/_logout_form.html.twig' %}
           {% endif %}
           {% if canAdminister %}
             <a class="button button--secondary" href="{{ path('pixiekat_symfony_helpers_admin_index_alias') }}">Admin control panel</a>

@@ -85,9 +85,26 @@
                   <button class="btn btn-primary" type="submit">
                     {{ 'login'|trans({}, 'SchebTwoFactorBundle') }}
                   </button>
-                  <a class="btn btn-link" href="{{ logoutPath }}">
+                  {#
+                    Cancel = log out of the half-finished sign-in. It was a link,
+                    which Turbo prefetched on hover and which LogoutRequestGuard
+                    now refuses. Forms cannot nest, so instead of the shared
+                    _logout_form partial this is a second submit button that
+                    re-targets the surrounding 2FA form at the logout path:
+                      formaction/formmethod  send it to logout as a POST
+                      formnovalidate         don't demand a 2FA code to cancel
+                      name/value             the logout token; a button's own
+                                             name/value is sent ONLY when that
+                                             button is the one pressed
+                      data-turbo="false"     full-page submit (SSO redirects
+                                             off-site, which fetch can't follow)
+                  #}
+                  <button type="submit" class="btn btn-link"
+                          formaction="{{ logoutPath }}" formmethod="post" formnovalidate
+                          name="_logout_token" value="{{ csrf_token('logout') }}"
+                          data-turbo="false">
                     {{ 'cancel'|trans({}, 'SchebTwoFactorBundle') }}
-                  </a>
+                  </button>
                 </div>
 
                 {% if isCsrfProtectionEnabled %}

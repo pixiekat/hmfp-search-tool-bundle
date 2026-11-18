@@ -234,7 +234,30 @@
             {% if is_granted(constant('Pixiekat\\HMFPSearchToolBundle\\Interfaces\\Security\\Voter\\PhysicianVoterInterface::PERMISSION_CAN_MANAGE_DELEGATES'), physician) %}
               <li><a class="button button--secondary" href="{{ path('hmfp_search_tool_delegates', {'physician': physician.id}) }}">Manage delegates</a></li>
             {% endif %}
-            <li><a class="button" href="{{ path('hmfp_search_tool_claim_start', {'physician': physician.id}) }}">Claim this profile</a></li>
+            {#
+              Claim link: shown to any signed-in user, NOT gated on
+              can_claim_physician — someone who has already claimed this
+              profile still needs the link, because the claim page tells them
+              so. ROLE_USER matches the #[IsGranted('ROLE_USER')] on the claim
+              route, so the link and the route can never disagree.
+
+              Signed-out visitors get a plain "Sign in to claim" link instead,
+              so a physician who finds their own profile still learns claiming
+              exists. It points at the SAME claim route on purpose: the route
+              denies them, the firewall saves the claim URL as the target path
+              and sends them to log in, and form login returns them straight to
+              the claim page afterwards. (SSO currently always lands on / —
+              see always_use_default_target_path in security.yaml.)
+
+              The button styling is kept for signed-in users only, so the
+              signed-out version reads as a next step rather than an action
+              that will work right now.
+            #}
+            {% if is_granted('ROLE_USER') %}
+              <li><a class="button" href="{{ path('hmfp_search_tool_claim_start', {'physician': physician.id}) }}">Claim this profile</a></li>
+            {% else %}
+              <li><a href="{{ path('hmfp_search_tool_claim_start', {'physician': physician.id}) }}">Sign in to claim this profile</a></li>
+            {% endif %}
             {% if canSearch %}
               {#
                 history.back() keeps the user's filters and scroll position, which

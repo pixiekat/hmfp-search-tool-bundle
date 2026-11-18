@@ -78,5 +78,30 @@
     <span>Logged in as <strong>{{ app.user.displayName }}</strong></span>
   {% endif %}
   <a href="{{ path('hmfp_search_tool_home') }}">Back to HMFP Search Tool</a>
-  <a href="{{ path('saml_logout') }}">Log out</a>
+  {# A POST form, not a link — see _logout_form.html.twig for why. Styled as a
+     link to match its neighbours; the rules are in the stylesheets block. #}
+  {% include '@HMFPSearchTool/security/_logout_form.html.twig' with { button_class: 'logout-form__link' } %}
+{% endblock %}
+
+{% block stylesheets %}
+  {{ parent() }}
+  {#
+    The admin skin (admin-cp.css) lives in the shared helpers bundle and styles
+    `.vb-header a`, which a <button> does not match. These few rules make the
+    logout button look like the header links beside it, kept here rather than
+    in the shared bundle because only this app's header has a logout form.
+  #}
+  <style>
+    .vb-header .logout-form { display: inline; margin: 0; }
+    .vb-header .logout-form__link {
+      background: none;
+      border: 0;
+      padding: 0;
+      color: #fff;
+      font: inherit;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .vb-header .logout-form__link:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  </style>
 {% endblock %}
