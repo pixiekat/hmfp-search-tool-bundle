@@ -94,6 +94,7 @@ a:hover { color: var(--hmfp-link-hover); }
 /* margin-left: auto keeps the button pinned right even after it wraps to its own line. */
 .site-admin-nav {
   display: flex;
+  flex-wrap: wrap;   /* narrow screens and 200% text zoom: stack, don't overflow */
   gap: 0.5rem;
   margin-left: auto;
 }
